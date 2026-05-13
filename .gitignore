@@ -1,0 +1,74 @@
+# ───────── Node / Next.js ─────────
+node_modules/
+.next/
+out/
+build/
+dist/
+*.tsbuildinfo
+next-env.d.ts
+
+# next-pwa generated
+web/public/sw.js
+web/public/sw.js.map
+web/public/workbox-*.js
+web/public/workbox-*.js.map
+web/public/worker-*.js
+web/public/worker-*.js.map
+web/public/fallback-*.js
+
+# Drizzle
+drizzle/
+
+# ───────── Python / FastAPI ─────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+ENV/
+*.egg-info/
+.eggs/
+pip-log.txt
+pip-delete-this-directory.txt
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# pyannote / HF cache
+.cache/
+diarization/models/
+diarization/audio_tmp/
+
+# ───────── Env / secrets ─────────
+.env
+.env.local
+.env.*.local
+.env.development
+.env.production
+!.env.example
+
+# ───────── OS ─────────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ───────── Editors ─────────
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ───────── Logs ─────────
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ───────── Misc temp ─────────
+tmp/
+temp/
+*.tmp
