@@ -14,6 +14,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { eq } from "drizzle-orm";
+import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { db, meetings, attendees } from "@/db";
 import { audioKey, uploadBuffer } from "@/lib/s3";
@@ -69,25 +70,11 @@ export async function POST(request: Request) {
       : "webm";
   const contentType = audio.type || (ext === "mp4" ? "audio/mp4" : "audio/webm");
 
-  // Create row first so we have an id to scope the S3 key under.
-  const [created] = await db
-    .insert(meetings)
-    .values({
-      userId,
-      title: title.trim(),
-      durationSeconds,
-      status: "awaiting_speaker_naming",
-    })
-    .returning({ id: meetings.id });
-
-  if (!created) {
-    return NextResponse.json(
-      { error: "Failed to create meeting" },
-      { status: 500 }
-    );
-  }
-
-  const key = audioKey(created.id, ext);
+  // Generate the id client-side. MySQL has no RETURNING clause, so we can't
+  // get the id back from the INSERT; generating it here keeps the flow
+  // single-roundtrip and lets us name the S3 key before the row exists.
+  const meetingId = randomUUID();
+  const key = audioKey(meetingId, ext);
   const buf = Buffer.from(await audio.arrayBuffer());
 
   await uploadBuffer({
@@ -97,19 +84,23 @@ export async function POST(request: Request) {
     cacheControl: "private, max-age=0",
   });
 
-  await db
-    .update(meetings)
-    .set({ audioUrl: key })
-    .where(eq(meetings.id, created.id));
+  await db.insert(meetings).values({
+    id: meetingId,
+    userId,
+    title: title.trim(),
+    audioUrl: key,
+    durationSeconds,
+    status: "awaiting_speaker_naming",
+  });
 
   if (attendeeEmails.length > 0) {
     await db.insert(attendees).values(
       attendeeEmails.map((email) => ({
-        meetingId: created.id,
+        meetingId,
         email,
       }))
     );
   }
 
-  return NextResponse.json({ meetingId: created.id });
+  return NextResponse.json({ meetingId });
 }

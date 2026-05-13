@@ -1,8 +1,8 @@
-import { neon } from "@neondatabase/serverless";
-import { drizzle } from "drizzle-orm/neon-http";
+import mysql from "mysql2/promise";
+import { drizzle, type MySql2Database } from "drizzle-orm/mysql2";
 import * as schema from "./schema";
 
-type DrizzleDb = ReturnType<typeof drizzle<typeof schema>>;
+type DrizzleDb = MySql2Database<typeof schema>;
 
 // Lazy: Next 16 imports route modules in workers to gather config; we don't
 // want a missing DATABASE_URL to break the build, only to fail at first query.
@@ -13,12 +13,19 @@ function getDb(): DrizzleDb {
   if (!url) {
     throw new Error("DATABASE_URL is not set");
   }
-  _db = drizzle(neon(url), { schema });
+  const pool = mysql.createPool({
+    uri: url,
+    // Generous defaults — meeting processing can take a while and we don't
+    // want to drop the connection mid-pipeline. Override via env if needed.
+    connectionLimit: Number(process.env.DATABASE_POOL_SIZE ?? 10),
+    waitForConnections: true,
+  });
+  _db = drizzle(pool, { schema, mode: "default" });
   return _db;
 }
 
-// Proxy that defers to the real Drizzle instance on first use. Lets callers
-// keep writing `import { db } from "@/db"; db.select()...` without changing.
+// Proxy that defers to the real Drizzle instance on first use, so callers can
+// still `import { db } from "@/db"; db.select()...`.
 export const db = new Proxy({} as DrizzleDb, {
   get(_target, prop, receiver) {
     return Reflect.get(getDb(), prop, receiver);

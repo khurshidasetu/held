@@ -1,24 +1,27 @@
 import {
-  pgTable,
-  pgEnum,
-  uuid,
+  mysqlTable,
+  mysqlEnum,
+  varchar,
   text,
-  integer,
-  doublePrecision,
+  int,
+  double,
   boolean,
-  jsonb,
+  json,
   timestamp,
   index,
-} from "drizzle-orm/pg-core";
-import { relations } from "drizzle-orm";
+  uniqueIndex,
+} from "drizzle-orm/mysql-core";
+import { relations, sql } from "drizzle-orm";
+import { randomUUID } from "node:crypto";
 
-export const meetingStatus = pgEnum("meeting_status", [
-  "pending",
-  "awaiting_speaker_naming",
-  "processing",
-  "complete",
-  "failed",
-]);
+// We use UUIDs everywhere instead of auto-increment so primary keys are
+// unguessable and don't reveal row counts. MySQL has no native UUID type;
+// we store them as CHAR(36) in canonical 8-4-4-4-12 form and generate them
+// in Node before each insert (via $defaultFn).
+const uuidPk = () =>
+  varchar("id", { length: 36 })
+    .$defaultFn(() => randomUUID())
+    .primaryKey();
 
 export type RawDiarizationSegment = {
   speaker: string;
@@ -26,25 +29,33 @@ export type RawDiarizationSegment = {
   end: number;
 };
 
-export const meetings = pgTable(
+export const meetings = mysqlTable(
   "meetings",
   {
-    id: uuid("id").primaryKey().defaultRandom(),
-    userId: text("user_id").notNull(),
-    title: text("title").notNull(),
-    audioUrl: text("audio_url"),
-    durationSeconds: integer("duration_seconds"),
-    status: meetingStatus("status").notNull().default("pending"),
-    errorMessage: text("error_message"),
-    // Raw output of the diarization service. Cached between identify-speakers
-    // (when it runs) and process (when we merge it with the transcript), so
-    // we don't pay for diarization twice.
-    diarizationSegments: jsonb("diarization_segments")
-      .$type<RawDiarizationSegment[]>()
-      .default([]),
-    createdAt: timestamp("created_at", { withTimezone: true })
+    id: uuidPk(),
+    userId: varchar("user_id", { length: 255 }).notNull(),
+    title: varchar("title", { length: 500 }).notNull(),
+    audioUrl: varchar("audio_url", { length: 1024 }),
+    durationSeconds: int("duration_seconds"),
+    status: mysqlEnum("status", [
+      "pending",
+      "awaiting_speaker_naming",
+      "processing",
+      "complete",
+      "failed",
+    ])
       .notNull()
-      .defaultNow(),
+      .default("pending"),
+    errorMessage: text("error_message"),
+    // Cached raw output from the diarization service. JSON because MySQL has
+    // no JSONB; the data is small (<10 KB for typical meetings) so the lack
+    // of binary representation isn't a concern.
+    diarizationSegments: json("diarization_segments").$type<
+      RawDiarizationSegment[]
+    >(),
+    createdAt: timestamp("created_at")
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
   },
   (t) => [
     index("meetings_user_idx").on(t.userId),
@@ -52,53 +63,53 @@ export const meetings = pgTable(
   ]
 );
 
-export const attendees = pgTable(
+export const attendees = mysqlTable(
   "attendees",
   {
-    id: uuid("id").primaryKey().defaultRandom(),
-    meetingId: uuid("meeting_id")
+    id: uuidPk(),
+    meetingId: varchar("meeting_id", { length: 36 })
       .notNull()
       .references(() => meetings.id, { onDelete: "cascade" }),
-    email: text("email").notNull(),
-    name: text("name"),
+    email: varchar("email", { length: 320 }).notNull(),
+    name: varchar("name", { length: 255 }),
   },
   (t) => [index("attendees_meeting_idx").on(t.meetingId)]
 );
 
-export const speakers = pgTable(
+export const speakers = mysqlTable(
   "speakers",
   {
-    id: uuid("id").primaryKey().defaultRandom(),
-    meetingId: uuid("meeting_id")
+    id: uuidPk(),
+    meetingId: varchar("meeting_id", { length: 36 })
       .notNull()
       .references(() => meetings.id, { onDelete: "cascade" }),
     // The label returned by pyannote, e.g. "SPEAKER_00". For silent attendees,
     // synthesized locally, e.g. "SILENT_00".
-    speakerLabel: text("speaker_label").notNull(),
+    speakerLabel: varchar("speaker_label", { length: 64 }).notNull(),
     // User-entered name. Null falls back to "Speaker N" in the UI.
-    displayName: text("display_name"),
+    displayName: varchar("display_name", { length: 255 }),
     isSilentAttendee: boolean("is_silent_attendee").notNull().default(false),
     // Null for silent attendees and for speakers where sample extraction failed.
-    sampleAudioUrl: text("sample_audio_url"),
-    createdAt: timestamp("created_at", { withTimezone: true })
+    sampleAudioUrl: varchar("sample_audio_url", { length: 1024 }),
+    createdAt: timestamp("created_at")
       .notNull()
-      .defaultNow(),
+      .default(sql`CURRENT_TIMESTAMP`),
   },
   (t) => [index("speakers_meeting_idx").on(t.meetingId)]
 );
 
-export const transcriptSegments = pgTable(
+export const transcriptSegments = mysqlTable(
   "transcript_segments",
   {
-    id: uuid("id").primaryKey().defaultRandom(),
-    meetingId: uuid("meeting_id")
+    id: uuidPk(),
+    meetingId: varchar("meeting_id", { length: 36 })
       .notNull()
       .references(() => meetings.id, { onDelete: "cascade" }),
-    speakerId: uuid("speaker_id")
+    speakerId: varchar("speaker_id", { length: 36 })
       .notNull()
       .references(() => speakers.id, { onDelete: "cascade" }),
-    startSeconds: doublePrecision("start_seconds").notNull(),
-    endSeconds: doublePrecision("end_seconds").notNull(),
+    startSeconds: double("start_seconds").notNull(),
+    endSeconds: double("end_seconds").notNull(),
     text: text("text").notNull(),
   },
   (t) => [
@@ -123,33 +134,36 @@ export type Topic = {
   summary?: string | null;
 };
 
-export const meetingSummaries = pgTable("meeting_summaries", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  meetingId: uuid("meeting_id")
-    .notNull()
-    .unique()
-    .references(() => meetings.id, { onDelete: "cascade" }),
-  summary: text("summary").notNull(),
-  actionItems: jsonb("action_items").$type<ActionItem[]>().notNull().default([]),
-  decisions: jsonb("decisions").$type<Decision[]>().notNull().default([]),
-  topics: jsonb("topics").$type<Topic[]>().notNull().default([]),
-  createdAt: timestamp("created_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
-});
-
-export const emailSends = pgTable(
-  "email_sends",
+export const meetingSummaries = mysqlTable(
+  "meeting_summaries",
   {
-    id: uuid("id").primaryKey().defaultRandom(),
-    meetingId: uuid("meeting_id")
+    id: uuidPk(),
+    meetingId: varchar("meeting_id", { length: 36 })
       .notNull()
       .references(() => meetings.id, { onDelete: "cascade" }),
-    recipientEmail: text("recipient_email").notNull(),
-    sentAt: timestamp("sent_at", { withTimezone: true })
+    summary: text("summary").notNull(),
+    actionItems: json("action_items").$type<ActionItem[]>().notNull(),
+    decisions: json("decisions").$type<Decision[]>().notNull(),
+    topics: json("topics").$type<Topic[]>().notNull(),
+    createdAt: timestamp("created_at")
       .notNull()
-      .defaultNow(),
-    postmarkMessageId: text("postmark_message_id"),
+      .default(sql`CURRENT_TIMESTAMP`),
+  },
+  (t) => [uniqueIndex("meeting_summaries_meeting_uniq").on(t.meetingId)]
+);
+
+export const emailSends = mysqlTable(
+  "email_sends",
+  {
+    id: uuidPk(),
+    meetingId: varchar("meeting_id", { length: 36 })
+      .notNull()
+      .references(() => meetings.id, { onDelete: "cascade" }),
+    recipientEmail: varchar("recipient_email", { length: 320 }).notNull(),
+    sentAt: timestamp("sent_at")
+      .notNull()
+      .default(sql`CURRENT_TIMESTAMP`),
+    postmarkMessageId: varchar("postmark_message_id", { length: 128 }),
   },
   (t) => [index("emails_meeting_idx").on(t.meetingId)]
 );

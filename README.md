@@ -17,7 +17,7 @@ Two services in one repository:
 ```
 minutely/
 ├── web/            Next.js 16 PWA (App Router, TypeScript, Tailwind)
-│                   - Clerk auth, Neon Postgres + Drizzle, AWS S3
+│                   - Clerk auth, MySQL + Drizzle, AWS S3
 │                   - Cartesia Ink-Whisper for streaming STT
 │                   - Claude Sonnet 4.5 for summaries
 │                   - Postmark for transactional email
@@ -39,7 +39,7 @@ minutely/
 4. **MediaRecorder** captures audio in the browser. iOS Safari falls back to
    `audio/mp4` when `audio/webm` is unsupported.
 5. On Stop, the audio is uploaded to **S3** (`meetings/{id}/audio.{ext}`) and
-   a row is created in Postgres with status `awaiting_speaker_naming`.
+   a row is created in MySQL with status `awaiting_speaker_naming`.
 6. The web server calls the **diarization service** with a presigned URL.
    pyannote returns `[{ speaker, start, end }]`. The web server uses
    `fluent-ffmpeg` to slice the **first clear segment ≥ 2 s** (capped at 8 s)
@@ -65,7 +65,8 @@ minutely/
 - Node.js **20.9+**
 - Python **3.11+**
 - An AWS S3 bucket (private; presigned URLs handle all reads)
-- Accounts at Clerk, Neon, Cartesia, Anthropic, Postmark, and Hugging Face
+- A MySQL 8.0+ database (local Docker is fine for dev)
+- Accounts at Clerk, Cartesia, Anthropic, Postmark, and Hugging Face
 - For diarization in production: a GPU VPS (see `diarization/README.md`)
 
 ### 1. Web app
@@ -75,7 +76,7 @@ cd web
 cp .env.example .env.local
 # fill in every variable; the app throws loudly if any are missing
 npm install
-npm run db:push        # apply Drizzle schema to Neon
+npm run db:push        # apply Drizzle schema to MySQL
 npm run dev            # http://localhost:3000
 ```
 
@@ -117,7 +118,7 @@ The full list with descriptions is in
 | Group        | Vars                                                                                |
 | ------------ | ----------------------------------------------------------------------------------- |
 | App          | `NEXT_PUBLIC_APP_URL`                                                              |
-| DB           | `DATABASE_URL` (Neon)                                                              |
+| DB           | `DATABASE_URL` (MySQL connection string)                                            |
 | Auth         | `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY`, redirect URLs              |
 | Storage      | `AWS_REGION`, `AWS_S3_BUCKET`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`         |
 | Diarization  | `DIARIZATION_SERVICE_URL`, `DIARIZATION_SERVICE_API_KEY`                           |
