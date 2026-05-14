@@ -138,8 +138,16 @@ export function SpeakerNamingPopup({ speakers, onSubmit, onSkip }: Props) {
       aria-modal="true"
       aria-labelledby="speaker-naming-title"
     >
-      <div className="w-full sm:max-w-lg bg-card text-card-foreground rounded-t-2xl sm:rounded-2xl shadow-xl flex flex-col max-h-[90vh]">
-        <div className="px-5 pt-5 pb-3 border-b border-border">
+      {/*
+        max-h-[90dvh] uses the DYNAMIC viewport height — on iOS Safari the
+        URL bar eats into 100vh but is excluded from dvh, so the modal no
+        longer renders taller than the visible area (which was pushing the
+        header above the top edge).
+        Flex column with shrink-0 header/footer and flex-1 min-h-0 body so
+        only the body scrolls; header + footer stay pinned and visible.
+      */}
+      <div className="w-full sm:max-w-lg bg-card text-card-foreground rounded-t-2xl sm:rounded-2xl shadow-xl flex flex-col max-h-[90dvh] sm:max-h-[90vh]">
+        <div className="shrink-0 px-5 pt-5 pb-3 border-b border-border">
           <h2
             id="speaker-naming-title"
             className="text-lg font-semibold tracking-tight"
@@ -154,7 +162,7 @@ export function SpeakerNamingPopup({ speakers, onSubmit, onSkip }: Props) {
           </p>
         </div>
 
-        <div className="overflow-y-auto px-5 py-4 space-y-3">
+        <div className="flex-1 min-h-0 overflow-y-auto px-5 py-4 space-y-3">
           {visibleSpeakers.length === 0 && (
             <p className="text-sm text-muted-foreground italic">
               All detected speakers were removed. Their words will be dropped
@@ -259,7 +267,15 @@ export function SpeakerNamingPopup({ speakers, onSubmit, onSkip }: Props) {
           </button>
         </div>
 
-        <div className="px-5 pt-3 pb-5 border-t border-border space-y-3">
+        <div
+          className="shrink-0 px-5 pt-3 border-t border-border space-y-3"
+          // env(safe-area-inset-bottom) keeps Continue clear of the iOS
+          // home indicator on bezel-less iPhones; falls back to 1.25rem
+          // on devices without a safe-area inset.
+          style={{
+            paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 1.25rem)",
+          }}
+        >
           <p className="text-xs text-muted-foreground text-center">
             Naming makes the transcript much clearer.
           </p>
