@@ -163,7 +163,7 @@ export const env = {
       return process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
     },
     get title() {
-      return "Minutely";
+      return "Held";
     },
   },
 
@@ -184,7 +184,7 @@ export const env = {
       return required("POSTMARK_FROM_EMAIL");
     },
     get fromName() {
-      return optional("POSTMARK_FROM_NAME") ?? "Minutely";
+      return optional("POSTMARK_FROM_NAME") ?? "Held";
     },
   },
 

@@ -1,7 +1,7 @@
-# Minutely · Diarization Service
+# Held · Diarization Service
 
 A small FastAPI service that wraps [pyannote.audio](https://github.com/pyannote/pyannote-audio)
-3.x for speaker diarization. The Minutely web app POSTs an audio URL here and
+3.x for speaker diarization. The Held web app POSTs an audio URL here and
 receives back a list of `{speaker, start, end}` segments.
 
 ## Endpoints
@@ -110,12 +110,12 @@ docker run -d \
 ### 4. (Recommended) Put it behind TLS
 
 Run nginx or Caddy on the host, terminating TLS on port 443 and proxying to
-`127.0.0.1:8000`. Then in the Minutely web app set
+`127.0.0.1:8000`. Then in the Held web app set
 `DIARIZATION_SERVICE_URL=https://diarize.example.com`.
 
 ### 5. (Recommended) Lock down the firewall
 
-Only the Minutely web server should be able to reach port 443 (or 8000
+Only the Held web server should be able to reach port 443 (or 8000
 directly). Even with `X-API-Key` as defence-in-depth, restrict at the network
 layer:
 

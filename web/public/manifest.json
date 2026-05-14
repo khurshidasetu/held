@@ -1,7 +1,7 @@
 {
-  "name": "Minutely",
-  "short_name": "Minutely",
-  "description": "Meeting capture with speaker identification, transcription, and AI summaries.",
+  "name": "Held",
+  "short_name": "Held",
+  "description": "Every meeting, held for you. Decisions, actions, and the next step — in one card.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

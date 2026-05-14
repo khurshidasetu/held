@@ -22,7 +22,7 @@ export async function downloadToTemp(
   url: string,
   filename = `audio-${randomUUID()}`
 ): Promise<{ filePath: string; dir: string }> {
-  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "minutely-audio-"));
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "held-audio-"));
   const filePath = path.join(dir, filename);
   const res = await fetch(url);
   if (!res.ok) {

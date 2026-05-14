@@ -1,9 +1,9 @@
 # Tiny mock-mode image — no torch, no pyannote. Returns synthetic speaker
 # segments based on the audio's real duration (probed with ffprobe).
 #
-# Builds in ~30s, image is ~150 MB. Lets you test the full Minutely flow
-# (upload → identify → Speaker Naming Popup → process → email) without
-# needing a Hugging Face account or a GPU.
+# Builds in ~30s, image is ~150 MB. Lets you test the full Held flow
+# (upload → identify → Speaker Naming Popup → process → Result Card)
+# without needing a Hugging Face account or a GPU.
 #
 # To switch to real diarization once you have an HF token, change
 # `dockerfile: Dockerfile.mock` to `dockerfile: Dockerfile.cpu` in

@@ -11,15 +11,15 @@ export default async function LandingPage() {
       <div className="max-w-xl text-center space-y-6">
         <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-brand/10 text-brand text-sm font-medium">
           <span className="w-2 h-2 rounded-full bg-brand" />
-          Get every meeting Minutely
+          Every meeting, held for you
         </div>
         <h1 className="text-4xl sm:text-5xl font-semibold tracking-tight text-foreground">
-          Every meeting, captured.
+          Held.
         </h1>
         <p className="text-base sm:text-lg text-muted-foreground">
-          Record, identify each speaker, transcribe, and email a clean AI
-          summary &mdash; with action items and key decisions &mdash; to
-          everyone who was in the room.
+          One tap to capture. One card to read. Decisions, action items, open
+          questions, and a single next step &mdash; without a transcript in
+          the way.
         </p>
         <div className="flex items-center justify-center gap-3 pt-2">
           <Link

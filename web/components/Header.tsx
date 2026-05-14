@@ -10,16 +10,16 @@ export function Header() {
           className="flex items-center gap-2 font-semibold text-foreground"
         >
           <span className="w-6 h-6 rounded-md bg-brand text-brand-foreground inline-flex items-center justify-center text-xs font-bold">
-            M
+            H
           </span>
-          <span>Minutely</span>
+          <span>Held</span>
         </Link>
         <div className="flex items-center gap-4">
           <Link
-            href="/app/meetings/new"
-            className="tap-target hidden sm:inline-flex items-center px-3 py-1.5 rounded-md bg-brand text-brand-foreground text-sm font-medium hover:bg-brand-hover"
+            href="/app/meetings"
+            className="tap-target hidden sm:inline-flex items-center px-3 py-1.5 rounded-md text-sm text-muted-foreground hover:text-foreground hover:bg-foreground/5"
           >
-            New meeting
+            Previous meetings
           </Link>
           <UserButton />
         </div>

@@ -30,7 +30,7 @@ export async function transcribeAudio(audioFilePath: string): Promise<Word[]> {
   // (PCM duration is exact: bytes / 2 / 16000 for 16-bit mono at 16 kHz.)
   const pcmFile = path.join(
     os.tmpdir(),
-    `minutely-pcm-${randomUUID()}.s16le`
+    `held-pcm-${randomUUID()}.s16le`
   );
 
   try {

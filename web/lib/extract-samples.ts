@@ -44,7 +44,7 @@ export async function extractSpeakerSamples({
   const grouped = groupBySpeaker(segments);
   const speakerLabels = Array.from(grouped.keys());
 
-  const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), `minutely-${meetingId}-`));
+  const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), `held-${meetingId}-`));
   const sourceFile = path.join(tmpDir, `source-${randomUUID()}.audio`);
   const sampleUrlsByLabel = new Map<string, string>();
 

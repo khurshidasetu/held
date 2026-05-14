@@ -1,5 +1,5 @@
 """
-Minutely diarization service.
+Held diarization service.
 
 Two modes, selected via DIARIZATION_MODE env var:
 
@@ -37,7 +37,7 @@ import httpx
 from fastapi import Depends, FastAPI, Header, HTTPException, status
 from pydantic import BaseModel, Field
 
-LOG = logging.getLogger("minutely.diarization")
+LOG = logging.getLogger("held.diarization")
 logging.basicConfig(level=logging.INFO)
 
 # ── Configuration ─────────────────────────────────────────────────────────
@@ -110,7 +110,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     state.pipeline = None
 
 
-app = FastAPI(title="Minutely Diarization", version="0.1.0", lifespan=lifespan)
+app = FastAPI(title="Held Diarization", version="0.1.0", lifespan=lifespan)
 
 
 # ── Auth ───────────────────────────────────────────────────────────────────
@@ -148,7 +148,7 @@ class DiarizeResponse(BaseModel):
 
 async def _download(url: str) -> Path:
     """Stream the URL to a temp file. Bounded by MAX_AUDIO_BYTES."""
-    fd, tmp = tempfile.mkstemp(prefix=f"minutely-{uuid.uuid4().hex}-")
+    fd, tmp = tempfile.mkstemp(prefix=f"held-{uuid.uuid4().hex}-")
     os.close(fd)
     path = Path(tmp)
 

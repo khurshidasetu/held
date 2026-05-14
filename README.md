@@ -1,14 +1,20 @@
-# Minutely
+# Held
 
-> Minutely — meeting capture with speaker identification, transcription, and AI summaries.
+> Held — every meeting, held for you.
 
-*Get every meeting Minutely.*
+*Held ships the answer, not a transcript.*
 
-Minutely is a Progressive Web App that records a meeting in the browser,
-identifies each speaker, lets the user name them with audio samples to verify,
-transcribes the conversation, generates an AI summary with action items and
-key topics, and emails the result to attendees plus any extra recipients.
-Works on desktop and on mobile (Chrome on Android, Safari on iOS).
+Held is a Progressive Web App that records a meeting in the browser, runs
+speaker diarization, transcribes the audio, and produces a single **Result
+Card** with the decisions, action items (owners + deadlines), open questions,
+and the one next step. The transcript exists only as forensic evidence,
+hidden one swipe away. The result is emailed (or shared) to attendees plus
+any extra recipients. Works on desktop and on mobile (Chrome on Android,
+Safari on iOS).
+
+> Repo / Docker resource names are still `minutely-*` for historical
+> reasons — they're internal infra labels and renaming would invalidate the
+> existing data volumes. The product is "Held" everywhere user-facing.
 
 ## Architecture
 
@@ -56,7 +62,7 @@ minutely/
    - Status → `complete`.
 9. The meeting detail page shows the named transcript and structured summary.
 10. **Send to attendees** ships per-recipient emails through **Postmark**, with
-    subject `[Minutely] Notes from "{meeting_title}"`.
+    subject `Held: {meeting_title}`.
 
 ## Running locally
 
@@ -71,7 +77,7 @@ minutely/
 
 ### 1. MySQL via Docker Compose
 
-A `docker-compose.yml` at the repo root spins up MySQL 8 with the Minutely
+A `docker-compose.yml` at the repo root spins up MySQL 8 with the Held
 schema and an application user pre-configured. From the repo root:
 
 ```bash

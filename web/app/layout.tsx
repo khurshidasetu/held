@@ -14,14 +14,14 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Minutely — Every meeting, captured.",
+  title: "Held — Every meeting, held for you.",
   description:
-    "Meeting capture with speaker identification, transcription, and AI summaries.",
-  applicationName: "Minutely",
+    "Held ships the answer, not a transcript. Decisions, action items, open questions, and the next step in one card.",
+  applicationName: "Held",
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
-    title: "Minutely",
+    title: "Held",
     statusBarStyle: "default",
   },
   icons: {
