@@ -5,9 +5,17 @@ import { useRouter } from "next/navigation";
 import { SpeakerNamingPopup, type DetectedSpeaker } from "./SpeakerNamingPopup";
 
 type RecorderProps = {
-  meetingTitle: string;
-  attendeeEmails: string[];
+  /** Optional. If omitted, the server auto-generates "Meeting on <date>". */
+  meetingTitle?: string;
+  /** Optional. Attendee emails captured up front; Held usually defers this
+   * to the post-meeting Share flow on the Result Card. */
+  attendeeEmails?: string[];
 };
+
+// localStorage flag that records the user has acknowledged the recording
+// consent once. Versioned so we can re-prompt if the legal text materially
+// changes (bump to :v2 etc.).
+const CONSENT_ACK_KEY = "held:consent-ack:v1";
 
 type Phase =
   | "idle"
@@ -33,10 +41,37 @@ function pickMimeType(): string | null {
   return null;
 }
 
-export function Recorder({ meetingTitle, attendeeEmails }: RecorderProps) {
+export function Recorder({
+  meetingTitle = "",
+  attendeeEmails = [],
+}: RecorderProps = {}) {
   const router = useRouter();
 
+  // Consent is one-time, persisted in localStorage. On first mount we read
+  // the flag; if set, the Record button is enabled immediately and no
+  // checkbox is shown. If cleared, we render the checkbox and write the
+  // flag the moment the user ticks it.
   const [consented, setConsented] = useState(false);
+  useEffect(() => {
+    try {
+      if (window.localStorage.getItem(CONSENT_ACK_KEY) === "1") {
+        setConsented(true);
+      }
+    } catch {
+      // Private mode / disabled storage — fall back to per-session consent.
+    }
+  }, []);
+  function acknowledgeConsent(v: boolean) {
+    setConsented(v);
+    if (v) {
+      try {
+        window.localStorage.setItem(CONSENT_ACK_KEY, "1");
+      } catch {
+        // ignore
+      }
+    }
+  }
+
   const [phase, setPhase] = useState<Phase>("idle");
   const [error, setError] = useState<string | null>(null);
   const [elapsed, setElapsed] = useState(0);
@@ -136,8 +171,19 @@ export function Recorder({ meetingTitle, attendeeEmails }: RecorderProps) {
     try {
       const fd = new FormData();
       const ext = blob.type.includes("mp4") ? "mp4" : "webm";
+      // Default title if the caller didn't supply one — Held's capture flow
+      // is "one tap", so most meetings won't have a title up front.
+      const titleToSend =
+        meetingTitle.trim() ||
+        `Meeting on ${new Date().toLocaleString(undefined, {
+          weekday: "short",
+          month: "short",
+          day: "numeric",
+          hour: "numeric",
+          minute: "2-digit",
+        })}`;
       fd.append("audio", blob, `recording.${ext}`);
-      fd.append("title", meetingTitle);
+      fd.append("title", titleToSend);
       fd.append("attendees", JSON.stringify(attendeeEmails));
       fd.append("durationSeconds", String(elapsed));
 
@@ -200,11 +246,13 @@ export function Recorder({ meetingTitle, attendeeEmails }: RecorderProps) {
 
   return (
     <div className="space-y-4">
-      <ConsentGate
-        consented={consented}
-        onChange={setConsented}
-        disabled={phase !== "idle"}
-      />
+      {!consented && (
+        <ConsentGate
+          consented={consented}
+          onChange={acknowledgeConsent}
+          disabled={phase !== "idle"}
+        />
+      )}
 
       <div className="rounded-lg border border-border bg-card p-6 flex flex-col items-center gap-4">
         {phase === "idle" && (

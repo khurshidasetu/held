@@ -11,7 +11,8 @@ import {
   attendees,
 } from "@/db";
 import { MeetingProcessingState } from "./MeetingProcessingState";
-import { SendEmailForm } from "./SendEmailForm";
+import { ShareForm } from "./ShareForm";
+import { TranscriptDisclosure } from "./TranscriptDisclosure";
 
 export const dynamic = "force-dynamic";
 
@@ -37,16 +38,14 @@ export default async function MeetingPage({ params }: PageProps) {
     .from(attendees)
     .where(eq(attendees.meetingId, id));
 
-  if (
-    meeting.status === "pending" ||
-    meeting.status === "processing"
-  ) {
+  if (meeting.status === "pending" || meeting.status === "processing") {
     return <MeetingProcessingState meeting={meeting} />;
   }
 
   if (meeting.status === "awaiting_speaker_naming") {
     return (
       <div className="space-y-4">
+        <BackLink />
         <h1 className="text-2xl font-semibold">{meeting.title}</h1>
         <div className="rounded-lg border border-border bg-card p-6 text-sm text-muted-foreground">
           Speaker naming hasn&rsquo;t been completed yet. Reopen the recorder
@@ -59,12 +58,7 @@ export default async function MeetingPage({ params }: PageProps) {
   if (meeting.status === "failed") {
     return (
       <div className="space-y-4">
-        <Link
-          href="/app"
-          className="text-sm text-muted-foreground hover:text-foreground"
-        >
-          ← Back
-        </Link>
+        <BackLink />
         <h1 className="text-2xl font-semibold">{meeting.title}</h1>
         <div className="rounded-lg border border-red-500/30 bg-red-500/5 p-6 text-sm text-red-700 dark:text-red-300">
           <div className="font-semibold mb-1">Processing failed</div>
@@ -74,7 +68,7 @@ export default async function MeetingPage({ params }: PageProps) {
     );
   }
 
-  // status === "complete"
+  // status === "complete" — render the Result Card.
   const speakerRows = await db
     .select()
     .from(speakers)
@@ -98,13 +92,8 @@ export default async function MeetingPage({ params }: PageProps) {
 
   return (
     <div className="space-y-6">
-      <div>
-        <Link
-          href="/app"
-          className="text-sm text-muted-foreground hover:text-foreground"
-        >
-          ← Back
-        </Link>
+      <header className="space-y-1">
+        <BackLink />
         <h1 className="text-2xl font-semibold tracking-tight mt-1">
           {meeting.title}
         </h1>
@@ -114,75 +103,100 @@ export default async function MeetingPage({ params }: PageProps) {
             ? ` · ${formatDuration(meeting.durationSeconds)}`
             : null}
         </p>
-      </div>
+      </header>
 
+      {/* Result Card — the answer first, transcript hidden one swipe away. */}
       {summary && (
-        <section className="rounded-lg border border-border bg-card p-5 space-y-5">
-          <div>
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-              Summary
-            </h2>
-            <p className="mt-2 leading-relaxed">{summary.summary}</p>
-          </div>
-
-          {summary.actionItems.length > 0 && (
-            <div>
-              <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-                Action items
-              </h2>
-              <ul className="mt-2 list-disc pl-5 space-y-1">
-                {summary.actionItems.map((a, i) => (
-                  <li key={i}>
-                    {a.text}
-                    {a.owner ? (
-                      <span className="text-muted-foreground"> ({a.owner})</span>
-                    ) : null}
-                    {a.dueDate ? (
-                      <span className="text-muted-foreground"> — {a.dueDate}</span>
-                    ) : null}
-                  </li>
-                ))}
-              </ul>
-            </div>
+        <article className="rounded-2xl border border-border bg-card overflow-hidden divide-y divide-border shadow-sm">
+          {summary.nextStep && (
+            <section className="p-5 bg-brand/5">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-brand">
+                Next step
+              </div>
+              <p className="mt-2 text-lg leading-snug text-foreground">
+                {summary.nextStep}
+              </p>
+            </section>
           )}
 
-          {summary.decisions.length > 0 && (
-            <div>
-              <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-                Decisions
-              </h2>
-              <ul className="mt-2 list-disc pl-5 space-y-1">
-                {summary.decisions.map((d, i) => (
-                  <li key={i}>
+          <ResultSection
+            title="Decisions"
+            empty="No decisions captured."
+            count={summary.decisions.length}
+          >
+            <ul className="space-y-2 text-[15px] leading-relaxed">
+              {summary.decisions.map((d, i) => (
+                <li key={i} className="flex gap-2">
+                  <span className="text-muted-foreground">·</span>
+                  <span>
                     {d.text}
                     {d.rationale ? (
-                      <span className="text-muted-foreground"> — {d.rationale}</span>
+                      <span className="text-muted-foreground">
+                        {" "}
+                        — {d.rationale}
+                      </span>
                     ) : null}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </ResultSection>
 
-          {summary.openQuestions.length > 0 && (
-            <div>
-              <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-                Open questions
-              </h2>
-              <ul className="mt-2 list-disc pl-5 space-y-1">
-                {summary.openQuestions.map((q, i) => (
-                  <li key={i}>{q.text}</li>
-                ))}
-              </ul>
-            </div>
-          )}
-        </section>
+          <ResultSection
+            title="Action items"
+            empty="No action items."
+            count={summary.actionItems.length}
+          >
+            <ul className="space-y-2 text-[15px] leading-relaxed">
+              {summary.actionItems.map((a, i) => (
+                <li key={i} className="flex gap-2">
+                  <span className="text-muted-foreground">·</span>
+                  <span>
+                    {a.text}
+                    {a.owner ? (
+                      <span className="text-foreground/80">
+                        {" "}
+                        <em className="not-italic font-medium">
+                          ({a.owner})
+                        </em>
+                      </span>
+                    ) : null}
+                    {a.dueDate ? (
+                      <span className="text-muted-foreground">
+                        {" "}
+                        — {a.dueDate}
+                      </span>
+                    ) : null}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </ResultSection>
+
+          <ResultSection
+            title="Open questions"
+            empty="Nothing left open."
+            count={summary.openQuestions.length}
+          >
+            <ul className="space-y-2 text-[15px] leading-relaxed">
+              {summary.openQuestions.map((q, i) => (
+                <li key={i} className="flex gap-2">
+                  <span className="text-muted-foreground">·</span>
+                  <span>{q.text}</span>
+                </li>
+              ))}
+            </ul>
+          </ResultSection>
+        </article>
       )}
 
-      <section>
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground mb-3">
-          Transcript
-        </h2>
+      {/* Transcript hidden by default — "one swipe away". */}
+      <TranscriptDisclosure>
+        {summary && (
+          <p className="text-sm text-muted-foreground italic mb-3">
+            {summary.summary}
+          </p>
+        )}
         <ol className="space-y-2">
           {segments.map((s) => (
             <li
@@ -192,22 +206,60 @@ export default async function MeetingPage({ params }: PageProps) {
               <div className="w-28 shrink-0 text-sm font-medium text-brand">
                 {speakerNameById.get(s.speakerId) ?? "Unknown"}
               </div>
-              <div className="flex-1 leading-relaxed">{s.text}</div>
+              <div className="flex-1 leading-relaxed text-sm">{s.text}</div>
             </li>
           ))}
         </ol>
-      </section>
+      </TranscriptDisclosure>
 
+      {/* Share — replaces the old "Send to attendees" with the same Postmark
+          flow under the hood. */}
       <section>
         <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground mb-3">
-          Send to attendees
+          Share
         </h2>
-        <SendEmailForm
+        <ShareForm
           meetingId={meeting.id}
           attendees={meetingAttendees.map((a) => a.email)}
         />
       </section>
     </div>
+  );
+}
+
+function BackLink() {
+  return (
+    <Link
+      href="/app/meetings"
+      className="text-sm text-muted-foreground hover:text-foreground"
+    >
+      ← Previous meetings
+    </Link>
+  );
+}
+
+function ResultSection({
+  title,
+  count,
+  empty,
+  children,
+}: {
+  title: string;
+  count: number;
+  empty: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="p-5">
+      <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground mb-3">
+        {title}
+      </div>
+      {count > 0 ? (
+        children
+      ) : (
+        <p className="text-sm text-muted-foreground">{empty}</p>
+      )}
+    </section>
   );
 }
 

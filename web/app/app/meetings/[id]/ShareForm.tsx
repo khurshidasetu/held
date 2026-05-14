@@ -11,7 +11,7 @@ type Props = {
   attendees: string[];
 };
 
-export function SendEmailForm({ meetingId, attendees }: Props) {
+export function ShareForm({ meetingId, attendees }: Props) {
   const [extra, setExtra] = useState("");
   const [included, setIncluded] = useState<Record<string, boolean>>(() =>
     Object.fromEntries(attendees.map((a) => [a, true]))
@@ -99,13 +99,13 @@ export function SendEmailForm({ meetingId, attendees }: Props) {
           disabled={finalList.length === 0}
           className="tap-target inline-flex items-center px-4 py-2 rounded-md bg-brand text-brand-foreground text-sm font-medium hover:bg-brand-hover disabled:opacity-40"
         >
-          Send to {finalList.length || "…"}{" "}
-          {finalList.length === 1 ? "recipient" : "recipients"}
+          Share with {finalList.length || "…"}{" "}
+          {finalList.length === 1 ? "person" : "people"}
         </button>
       ) : (
         <div className="rounded-md border border-border p-3 space-y-2">
           <div className="text-sm">
-            We&rsquo;ll send the meeting notes to:
+            We&rsquo;ll share the result card with:
             <ul className="list-disc pl-5 mt-1">
               {finalList.map((r) => (
                 <li key={r} className="text-muted-foreground">
