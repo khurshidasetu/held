@@ -1,8 +1,7 @@
 import Link from "next/link";
-import { auth } from "@clerk/nextjs/server";
-import { redirect } from "next/navigation";
 import { desc, eq } from "drizzle-orm";
 import { db, meetings, type MeetingStatus } from "@/db";
+import { getCurrentUserId } from "@/lib/auth";
 import { DeleteMeetingButton } from "./DeleteMeetingButton";
 
 export const dynamic = "force-dynamic";
@@ -24,8 +23,7 @@ const statusClasses: Record<MeetingStatus, string> = {
 };
 
 export default async function PreviousMeetingsPage() {
-  const { userId } = await auth();
-  if (!userId) redirect("/sign-in");
+  const userId = await getCurrentUserId();
 
   const list = await db
     .select()

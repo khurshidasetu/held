@@ -1,15 +1,13 @@
 import Link from "next/link";
-import { auth } from "@clerk/nextjs/server";
-import { redirect } from "next/navigation";
 import { count, eq } from "drizzle-orm";
 import { db, meetings } from "@/db";
+import { getCurrentUserId } from "@/lib/auth";
 import { Recorder } from "@/components/Recorder";
 
 export const dynamic = "force-dynamic";
 
 export default async function CapturePage() {
-  const { userId } = await auth();
-  if (!userId) redirect("/sign-in");
+  const userId = await getCurrentUserId();
 
   // Just the count — the list itself lives at /app/meetings.
   const [{ n }] = await db

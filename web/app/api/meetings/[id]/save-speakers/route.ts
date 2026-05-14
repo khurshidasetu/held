@@ -16,7 +16,7 @@
  *   can be redirected to the meeting detail page immediately.
  */
 import { NextResponse } from "next/server";
-import { auth } from "@clerk/nextjs/server";
+import { getCurrentUserId } from "@/lib/auth";
 import { eq, and } from "drizzle-orm";
 import { z } from "zod";
 import { db, meetings, speakers } from "@/db";
@@ -42,10 +42,7 @@ const BodySchema = z.object({
 type Context = { params: Promise<{ id: string }> };
 
 export async function POST(request: Request, ctx: Context) {
-  const { userId } = await auth();
-  if (!userId) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const userId = await getCurrentUserId();
 
   const { id } = await ctx.params;
 

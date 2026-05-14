@@ -12,11 +12,11 @@
  * { meetingId }.
  */
 import { NextResponse } from "next/server";
-import { auth } from "@clerk/nextjs/server";
 import { eq } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { db, meetings, attendees } from "@/db";
+import { getCurrentUserId } from "@/lib/auth";
 import { audioKey, uploadBuffer } from "@/lib/storage";
 
 export const runtime = "nodejs";
@@ -25,10 +25,7 @@ export const dynamic = "force-dynamic";
 const AttendeeListSchema = z.array(z.string().email());
 
 export async function POST(request: Request) {
-  const { userId } = await auth();
-  if (!userId) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const userId = await getCurrentUserId();
 
   const form = await request.formData();
 

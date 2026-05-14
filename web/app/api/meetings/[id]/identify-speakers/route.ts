@@ -13,7 +13,7 @@
  * the save-speakers endpoint advances it.
  */
 import { NextResponse } from "next/server";
-import { auth } from "@clerk/nextjs/server";
+import { getCurrentUserId } from "@/lib/auth";
 import { eq, and } from "drizzle-orm";
 import { db, meetings, speakers } from "@/db";
 import { diarize } from "@/lib/diarization";
@@ -29,10 +29,7 @@ export const maxDuration = 300;
 type Context = { params: Promise<{ id: string }> };
 
 export async function POST(_req: Request, ctx: Context) {
-  const { userId } = await auth();
-  if (!userId) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const userId = await getCurrentUserId();
 
   const { id } = await ctx.params;
 

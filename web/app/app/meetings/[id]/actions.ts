@@ -1,6 +1,6 @@
 "use server";
 
-import { auth } from "@clerk/nextjs/server";
+import { getCurrentUserId } from "@/lib/auth";
 import { eq, and } from "drizzle-orm";
 import { z } from "zod";
 import {
@@ -33,10 +33,7 @@ export async function sendMeetingEmails(
   meetingId: string,
   recipients: string[]
 ): Promise<SendEmailsResult> {
-  const { userId } = await auth();
-  if (!userId) {
-    throw new Error("Unauthorized");
-  }
+  const userId = await getCurrentUserId();
 
   const cleaned = Array.from(
     new Set(recipients.map((r) => r.trim().toLowerCase()))

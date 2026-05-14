@@ -1,7 +1,7 @@
-import { auth } from "@clerk/nextjs/server";
-import { redirect, notFound } from "next/navigation";
+import { notFound } from "next/navigation";
 import Link from "next/link";
 import { eq, and, asc } from "drizzle-orm";
+import { getCurrentUserId } from "@/lib/auth";
 import {
   db,
   meetings,
@@ -22,8 +22,7 @@ type PageProps = {
 
 export default async function MeetingPage({ params }: PageProps) {
   const { id } = await params;
-  const { userId } = await auth();
-  if (!userId) redirect("/sign-in");
+  const userId = await getCurrentUserId();
 
   const [meeting] = await db
     .select()

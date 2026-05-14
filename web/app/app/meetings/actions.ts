@@ -1,9 +1,9 @@
 "use server";
 
-import { auth } from "@clerk/nextjs/server";
 import { revalidatePath } from "next/cache";
 import { and, eq } from "drizzle-orm";
 import { db, meetings } from "@/db";
+import { getCurrentUserId } from "@/lib/auth";
 import { deleteUnder } from "@/lib/storage";
 
 /**
@@ -16,8 +16,7 @@ import { deleteUnder } from "@/lib/storage";
  * the DB cascade is the source of truth for "this meeting no longer exists".
  */
 export async function deleteMeeting(meetingId: string): Promise<void> {
-  const { userId } = await auth();
-  if (!userId) throw new Error("Unauthorized");
+  const userId = await getCurrentUserId();
 
   const [meeting] = await db
     .select({ id: meetings.id })

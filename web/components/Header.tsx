@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { UserButton } from "@clerk/nextjs";
 import { ThemeToggle } from "./ThemeToggle";
 
 export function Header() {
@@ -23,7 +22,6 @@ export function Header() {
             Previous meetings
           </Link>
           <ThemeToggle />
-          <UserButton />
         </div>
       </div>
     </header>

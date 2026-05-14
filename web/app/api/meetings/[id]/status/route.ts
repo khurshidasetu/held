@@ -3,7 +3,7 @@
  * meeting detail page while the meeting is being processed.
  */
 import { NextResponse } from "next/server";
-import { auth } from "@clerk/nextjs/server";
+import { getCurrentUserId } from "@/lib/auth";
 import { eq, and } from "drizzle-orm";
 import { db, meetings } from "@/db";
 
@@ -13,10 +13,7 @@ export const dynamic = "force-dynamic";
 type Context = { params: Promise<{ id: string }> };
 
 export async function GET(_req: Request, ctx: Context) {
-  const { userId } = await auth();
-  if (!userId) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const userId = await getCurrentUserId();
 
   const { id } = await ctx.params;
 

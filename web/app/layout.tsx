@@ -1,6 +1,5 @@
 import type { Metadata, Viewport } from "next";
 import { Fraunces, EB_Garamond, Geist_Mono } from "next/font/google";
-import { ClerkProvider } from "@clerk/nextjs";
 import "./globals.css";
 
 // Fraunces — primary face. Variable axes for weight, italic, and optical
@@ -66,17 +65,15 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <ClerkProvider afterSignOutUrl="/">
-      <html
-        lang="en"
-        className={`${fraunces.variable} ${ebGaramond.variable} ${geistMono.variable} h-full antialiased`}
-        suppressHydrationWarning
-      >
-        <head>
-          <script dangerouslySetInnerHTML={{ __html: themeBootstrap }} />
-        </head>
-        <body className="min-h-full flex flex-col">{children}</body>
-      </html>
-    </ClerkProvider>
+    <html
+      lang="en"
+      className={`${fraunces.variable} ${ebGaramond.variable} ${geistMono.variable} h-full antialiased`}
+      suppressHydrationWarning
+    >
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeBootstrap }} />
+      </head>
+      <body className="min-h-full flex flex-col">{children}</body>
+    </html>
   );
 }
