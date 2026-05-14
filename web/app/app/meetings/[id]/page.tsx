@@ -89,6 +89,25 @@ export default async function MeetingPage({ params }: PageProps) {
   const speakerNameById = new Map(
     speakerRows.map((s, i) => [s.id, s.displayName ?? `Speaker ${i + 1}`])
   );
+  // Deterministic per-speaker color so the transcript reads as a script,
+  // not a wall of indigo. Order is stable (speakerRows is fetched in insert
+  // order) so the same speaker keeps the same color across page loads.
+  const SPEAKER_PALETTE = [
+    "#6366f1", // indigo
+    "#10b981", // emerald
+    "#f59e0b", // amber
+    "#f43f5e", // rose
+    "#0ea5e9", // sky
+    "#8b5cf6", // violet
+    "#14b8a6", // teal
+    "#f97316", // orange
+  ];
+  const speakerColorById = new Map(
+    speakerRows.map((s, i) => [
+      s.id,
+      SPEAKER_PALETTE[i % SPEAKER_PALETTE.length],
+    ])
+  );
 
   return (
     <div className="space-y-6">
@@ -203,7 +222,13 @@ export default async function MeetingPage({ params }: PageProps) {
               key={s.id}
               className="flex gap-3 rounded-md border border-border bg-card px-4 py-3"
             >
-              <div className="w-28 shrink-0 text-sm font-medium text-brand">
+              <div
+                className="w-28 shrink-0 text-sm font-medium"
+                style={{
+                  color:
+                    speakerColorById.get(s.speakerId) ?? "var(--brand)",
+                }}
+              >
                 {speakerNameById.get(s.speakerId) ?? "Unknown"}
               </div>
               <div className="flex-1 leading-relaxed text-sm">{s.text}</div>
