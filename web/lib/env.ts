@@ -119,9 +119,45 @@ export const env = {
     },
   },
 
+  // LLM provider for meeting summaries.
+  //   - "openrouter" (default) — OpenAI-compatible proxy that routes to Claude
+  //     and many others. One key works for everything; "anthropic/claude-sonnet-4.5"
+  //     is the default model slug.
+  //   - "anthropic" — direct to Anthropic's API.
+  llm: {
+    get provider(): "openrouter" | "anthropic" {
+      const v = (process.env.LLM_PROVIDER || "openrouter").toLowerCase();
+      if (v !== "openrouter" && v !== "anthropic") {
+        throw new Error(
+          `Invalid LLM_PROVIDER: ${v} (expected "openrouter" or "anthropic")`
+        );
+      }
+      return v;
+    },
+  },
+
+  openrouter: {
+    get apiKey() {
+      return required("OPENROUTER_API_KEY");
+    },
+    get model() {
+      return process.env.OPENROUTER_MODEL || "anthropic/claude-sonnet-4.5";
+    },
+    /** Optional — shown on https://openrouter.ai/rankings if set. */
+    get referer() {
+      return process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+    },
+    get title() {
+      return "Minutely";
+    },
+  },
+
   anthropic: {
     get apiKey() {
       return required("ANTHROPIC_API_KEY");
+    },
+    get model() {
+      return process.env.ANTHROPIC_MODEL || "claude-sonnet-4-5";
     },
   },
 

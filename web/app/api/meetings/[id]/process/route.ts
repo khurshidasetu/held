@@ -37,7 +37,7 @@ import {
 } from "@/lib/audio";
 import { transcribePcmFile } from "@/lib/cartesia";
 import { mergeTranscript, renderNamedTranscript } from "@/lib/merge-transcript";
-import { summarizeTranscript } from "@/lib/anthropic";
+import { summarizeTranscript } from "@/lib/llm";
 
 export const runtime = "nodejs";
 export const maxDuration = 800;
