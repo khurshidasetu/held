@@ -29,8 +29,8 @@ services:
   diarization:
     build:
       context: ./diarization
-      dockerfile: Dockerfile.mock
-    image: minutely-diarization:mock
+      dockerfile: Dockerfile.cpu
+    image: minutely-diarization:cpu
     container_name: minutely-diarization
     restart: unless-stopped
     env_file:

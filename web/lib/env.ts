@@ -177,11 +177,16 @@ export const env = {
   },
 
   postmark: {
+    // Postmark calls this the "Server API Token" — UUID format, per-server,
+    // scoped to a single Postmark Server (the unit that holds sender
+    // signatures + message streams).
     get token() {
-      return required("POSTMARK_SERVER_TOKEN");
+      return required("POSTMARK_API_KEY");
     },
-    get fromEmail() {
-      return required("POSTMARK_FROM_EMAIL");
+    // Verified Sender Signature email (or address on a verified domain).
+    // Postmark rejects sends with an unverified From address.
+    get sender() {
+      return required("POSTMARK_SENDER");
     },
     get fromName() {
       return optional("POSTMARK_FROM_NAME") ?? "Held";

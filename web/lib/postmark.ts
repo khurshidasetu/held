@@ -43,7 +43,7 @@ export async function sendMeetingEmail(
 
   try {
     const res = await client().sendEmail({
-      From: `"${env.postmark.fromName}" <${env.postmark.fromEmail}>`,
+      From: `"${env.postmark.fromName}" <${env.postmark.sender}>`,
       To: payload.recipient,
       Subject: subject,
       HtmlBody: html,

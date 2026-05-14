@@ -12,3 +12,14 @@ pydantic==2.9.2
 httpx==0.27.2
 
 pyannote.audio==3.3.2
+# pyannote 3.3.2 internally calls hf_hub_download(use_auth_token=...), which
+# was renamed to token=... in huggingface_hub 1.0. Pin to the last v0.x
+# series so the alias still resolves. Drop this pin if/when pyannote ships
+# a release that uses the new kwarg.
+huggingface_hub<1.0
+# pyannote eagerly imports matplotlib at module load even though we never
+# render plots — the import lives in
+# pyannote/audio/tasks/segmentation/mixins.py. Without it, the whole
+# `pyannote.audio.pipelines` package fails to import. Headless agg backend
+# is fine; we never call show().
+matplotlib==3.9.2
