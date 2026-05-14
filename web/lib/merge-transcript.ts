@@ -9,7 +9,7 @@
  *
  * Silent attendees (no audio) are filtered out — they have no segments.
  */
-import type { Word } from "./cartesia";
+import type { Word } from "./stt";
 import type { DiarizationSegment } from "./diarization";
 
 export type MergedUtterance = {

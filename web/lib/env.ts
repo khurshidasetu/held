@@ -113,6 +113,21 @@ export const env = {
     },
   },
 
+  // Speech-to-text provider.
+  //   - "mock" (default) — placeholder transcript, no API key needed.
+  //   - "cartesia"        — real Ink-Whisper STT over WebSocket.
+  stt: {
+    get provider(): "mock" | "cartesia" {
+      const v = (process.env.STT_PROVIDER || "mock").toLowerCase();
+      if (v !== "mock" && v !== "cartesia") {
+        throw new Error(
+          `Invalid STT_PROVIDER: ${v} (expected "mock" or "cartesia")`
+        );
+      }
+      return v;
+    },
+  },
+
   cartesia: {
     get apiKey() {
       return required("CARTESIA_API_KEY");

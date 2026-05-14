@@ -18,9 +18,6 @@
  */
 import { NextResponse } from "next/server";
 import fs from "node:fs/promises";
-import path from "node:path";
-import os from "node:os";
-import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 import {
   db,
@@ -31,11 +28,8 @@ import {
 } from "@/db";
 import { env } from "@/lib/env";
 import { getPresignedGetUrl } from "@/lib/storage";
-import {
-  downloadToTemp,
-  toPcm16kMono,
-} from "@/lib/audio";
-import { transcribePcmFile } from "@/lib/cartesia";
+import { downloadToTemp } from "@/lib/audio";
+import { transcribeAudio } from "@/lib/stt";
 import { mergeTranscript, renderNamedTranscript } from "@/lib/merge-transcript";
 import { summarizeTranscript } from "@/lib/llm";
 
@@ -106,18 +100,14 @@ async function runPipeline(
     audioUrl,
     `meeting-${meetingId}.audio`
   );
-  const pcmFile = path.join(
-    os.tmpdir(),
-    `minutely-pcm-${randomUUID()}.s16le`
-  );
 
   let words;
   try {
-    await toPcm16kMono(sourceFile, pcmFile);
-    words = await transcribePcmFile(pcmFile);
+    // STT layer handles PCM transcoding internally and dispatches to the
+    // configured provider (mock or cartesia).
+    words = await transcribeAudio(sourceFile);
   } finally {
     await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
-    await fs.rm(pcmFile, { force: true }).catch(() => {});
   }
 
   const utterances = mergeTranscript(words, rawSegments);
