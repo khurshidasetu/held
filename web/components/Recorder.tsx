@@ -110,6 +110,34 @@ export function Recorder({
 
   async function startRecording() {
     setError(null);
+
+    // Consent gate — checked at click time rather than via `disabled` on
+    // the button. iOS Safari occasionally drops React's onChange when a
+    // <label> wraps a checkbox, which would leave the React state at
+    // `false` even though the visual checkbox toggles. Doing the check
+    // here means the legal gate is still enforced; we just avoid the
+    // "mysterious disabled button" failure mode.
+    if (!consented) {
+      setError(
+        "All participants must consent to being recorded. Tap the box above first."
+      );
+      return;
+    }
+
+    // Mic API requires a secure context (HTTPS or localhost on the same
+    // device). Hitting the LAN IP over HTTP from a phone → undefined.
+    // Detect early so the error is human-readable.
+    if (
+      typeof navigator === "undefined" ||
+      !navigator.mediaDevices ||
+      typeof navigator.mediaDevices.getUserMedia !== "function"
+    ) {
+      setError(
+        "Microphone access requires a secure context. Open this URL over HTTPS, or use localhost on the same device."
+      );
+      return;
+    }
+
     const mime = pickMimeType();
     if (!mime) {
       setError(
@@ -259,9 +287,9 @@ export function Recorder({
           <button
             type="button"
             onClick={startRecording}
-            disabled={!consented}
             aria-label="Record"
-            className="group relative inline-flex items-center justify-center w-28 h-28 rounded-full bg-brand text-brand-foreground hover:bg-brand-hover disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-300 shadow-xl shadow-brand/30 hover:shadow-2xl hover:shadow-brand/40 hover:scale-[1.03] active:scale-95"
+            aria-disabled={!consented || undefined}
+            className="group relative inline-flex items-center justify-center w-28 h-28 rounded-full bg-brand text-brand-foreground hover:bg-brand-hover transition-all duration-300 shadow-xl shadow-brand/30 hover:shadow-2xl hover:shadow-brand/40 hover:scale-[1.03] active:scale-95 aria-disabled:opacity-50 aria-disabled:hover:scale-100"
           >
             {/* Concentric dot — the universal "record" affordance. */}
             <span
@@ -273,7 +301,7 @@ export function Recorder({
 
         {phase === "idle" && (
           <span className="text-sm text-muted-foreground">
-            {consented ? "Tap to record" : "Acknowledge consent to enable"}
+            {consented ? "Tap to record" : "Check the consent box, then tap"}
           </span>
         )}
 
@@ -359,7 +387,13 @@ function ConsentGate({
       <input
         type="checkbox"
         checked={consented}
+        // onChange covers desktop + most mobile; onClick is a defensive
+        // fallback because iOS Safari has historically dropped React's
+        // synthetic onChange when a <label> wraps a checkbox.
         onChange={(e) => onChange(e.target.checked)}
+        onClick={(e) =>
+          onChange((e.currentTarget as HTMLInputElement).checked)
+        }
         disabled={disabled}
         className="mt-1 h-5 w-5 rounded border-border accent-brand"
       />
