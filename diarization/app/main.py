@@ -25,6 +25,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import subprocess
 import tempfile
 import uuid
@@ -175,13 +176,17 @@ async def _download(url: str) -> Path:
 
 def _probe_duration_seconds(path: Path) -> float:
     """
-    Return audio duration in seconds, trying three strategies in order.
+    Return audio duration in seconds, trying four strategies in order.
 
     MediaRecorder-produced WebM/Opus files (Chrome, Firefox, Android) often
-    have no duration in either the container header or the stream metadata,
-    because the format is streaming-oriented and MediaRecorder doesn't
-    rewrite the duration when the stream ends. So we fall back to packet
-    counting, which always works but is slower.
+    have NO duration anywhere — not in the container header, not in stream
+    metadata, and even -count_packets returns an empty stream object because
+    MediaRecorder writes the file as a "live" Matroska stream that never gets
+    finalized with Cues/SeekHead/SegmentInfo.duration.
+
+    So our last-resort strategy decodes the entire file to /dev/null and
+    parses ffmpeg's `time=HH:MM:SS.SS` progress output. That always works —
+    it just costs a full decode pass (~70ms for a 30s clip on CPU).
     """
     # Strategy 1: container-level format.duration. Fast, works for most files.
     duration = _try_probe(path, ["format=duration"], key="format")
@@ -194,8 +199,26 @@ def _probe_duration_seconds(path: Path) -> float:
     if duration is not None:
         return duration
 
-    # Strategy 3: force ffprobe to actually count packets. ~100ms for a 30s
-    # clip; always works for valid audio.
+    # Strategy 3: force ffprobe to actually count packets. Works for some
+    # malformed-but-recoverable files. Returns nothing for MediaRecorder
+    # WebM — we keep it because it's nearly free when it works.
+    duration = _try_probe_count_packets(path)
+    if duration is not None:
+        return duration
+
+    # Strategy 4: full ffmpeg decode, parse time= from stderr progress.
+    # Always works for any audio ffmpeg can decode.
+    duration = _try_decode_duration(path)
+    if duration is not None:
+        return duration
+
+    raise HTTPException(
+        status_code=422,
+        detail="Could not determine audio duration after 4 strategies. File may be corrupt or empty.",
+    )
+
+
+def _try_probe_count_packets(path: Path) -> float | None:
     try:
         result = subprocess.run(
             [
@@ -218,18 +241,52 @@ def _probe_duration_seconds(path: Path) -> float:
         )
         data = json.loads(result.stdout)
         streams = data.get("streams", [])
-        if streams and "duration" in streams[0]:
-            return float(streams[0]["duration"])
-    except (subprocess.CalledProcessError, json.JSONDecodeError, ValueError) as e:
-        raise HTTPException(
-            status_code=422,
-            detail=f"Could not probe audio duration after 3 attempts: {e}",
-        )
+        if not streams:
+            return None
+        d = streams[0].get("duration")
+        if d in (None, "N/A", ""):
+            return None
+        v = float(d)
+        return v if v > 0 else None
+    except (subprocess.CalledProcessError, json.JSONDecodeError, ValueError):
+        return None
 
-    raise HTTPException(
-        status_code=422,
-        detail="Could not probe audio duration: no duration found in container, stream, or packet count.",
-    )
+
+_FFMPEG_TIME_RE = re.compile(r"time=(\d+):(\d+):(\d+(?:\.\d+)?)")
+
+
+def _try_decode_duration(path: Path) -> float | None:
+    """Decode the whole stream and parse the final `time=` from stderr."""
+    try:
+        # `-nostdin` so ffmpeg doesn't try to read from stdin; `-f null -`
+        # discards output but still processes every packet.
+        result = subprocess.run(
+            [
+                "ffmpeg",
+                "-hide_banner",
+                "-nostdin",
+                "-i",
+                str(path),
+                "-f",
+                "null",
+                "-",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=600,  # 10 minutes — enough for very long meetings
+        )
+    except subprocess.TimeoutExpired:
+        LOG.warning("ffmpeg decode timed out on %s", path)
+        return None
+
+    matches = _FFMPEG_TIME_RE.findall(result.stderr)
+    if not matches:
+        return None
+    h, m, s = matches[-1]
+    try:
+        return int(h) * 3600 + int(m) * 60 + float(s)
+    except ValueError:
+        return None
 
 
 def _try_probe(path: Path, show_entries: list[str], key: str) -> float | None:
