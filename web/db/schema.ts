@@ -129,11 +129,17 @@ export type Decision = {
   rationale?: string | null;
 };
 
-export type Topic = {
-  name: string;
-  summary?: string | null;
+export type OpenQuestion = {
+  text: string;
 };
 
+// Held's "Result Card" model: ship the answer, not a recap.
+// - nextStep: the single most important next action (highlighted in UI)
+// - decisions: things the meeting decided
+// - actionItems: things to do, with owners + deadlines
+// - openQuestions: unresolved items / parking lot
+// summary is kept for the email body + the "View transcript" context view;
+// it is NOT shown prominently in the Result Card itself.
 export const meetingSummaries = mysqlTable(
   "meeting_summaries",
   {
@@ -142,9 +148,10 @@ export const meetingSummaries = mysqlTable(
       .notNull()
       .references(() => meetings.id, { onDelete: "cascade" }),
     summary: text("summary").notNull(),
+    nextStep: text("next_step"),
     actionItems: json("action_items").$type<ActionItem[]>().notNull(),
     decisions: json("decisions").$type<Decision[]>().notNull(),
-    topics: json("topics").$type<Topic[]>().notNull(),
+    openQuestions: json("open_questions").$type<OpenQuestion[]>().notNull(),
     createdAt: timestamp("created_at")
       .notNull()
       .default(sql`CURRENT_TIMESTAMP`),

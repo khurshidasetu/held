@@ -73,9 +73,10 @@ export async function sendMeetingEmails(
       meetingTitle: meeting.title,
       meetingUrl,
       summary: summary.summary,
+      nextStep: summary.nextStep,
       actionItems: summary.actionItems,
       decisions: summary.decisions,
-      topics: summary.topics,
+      openQuestions: summary.openQuestions,
     });
 
     if (result.ok) {

@@ -25,20 +25,22 @@ async function main() {
   const result = await summarizeTranscript(TRANSCRIPT);
   const ms = Date.now() - start;
 
-  console.log(`✓ got summary in ${ms} ms`);
+  console.log(`✓ got result in ${ms} ms`);
+  console.log(`\n--- next step ---`);
+  console.log(result.nextStep ?? "(none)");
   console.log(`\n--- summary ---`);
   console.log(result.summary);
-  console.log(`\n--- action items (${result.actionItems.length}) ---`);
-  for (const a of result.actionItems) {
-    console.log(`  • ${a.text}${a.owner ? ` (${a.owner})` : ""}${a.dueDate ? ` — ${a.dueDate}` : ""}`);
-  }
   console.log(`\n--- decisions (${result.decisions.length}) ---`);
   for (const d of result.decisions) {
     console.log(`  • ${d.text}${d.rationale ? ` — ${d.rationale}` : ""}`);
   }
-  console.log(`\n--- topics (${result.topics.length}) ---`);
-  for (const t of result.topics) {
-    console.log(`  • ${t.name}${t.summary ? `: ${t.summary}` : ""}`);
+  console.log(`\n--- action items (${result.actionItems.length}) ---`);
+  for (const a of result.actionItems) {
+    console.log(`  • ${a.text}${a.owner ? ` (${a.owner})` : ""}${a.dueDate ? ` — ${a.dueDate}` : ""}`);
+  }
+  console.log(`\n--- open questions (${result.openQuestions.length}) ---`);
+  for (const q of result.openQuestions) {
+    console.log(`  • ${q.text}`);
   }
 }
 

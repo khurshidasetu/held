@@ -164,9 +164,10 @@ async function runPipeline(
   await db.insert(meetingSummaries).values({
     meetingId,
     summary: summary.summary,
+    nextStep: summary.nextStep,
     actionItems: summary.actionItems,
     decisions: summary.decisions,
-    topics: summary.topics,
+    openQuestions: summary.openQuestions,
   });
 
   await db

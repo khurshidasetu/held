@@ -164,17 +164,14 @@ export default async function MeetingPage({ params }: PageProps) {
             </div>
           )}
 
-          {summary.topics.length > 0 && (
+          {summary.openQuestions.length > 0 && (
             <div>
               <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-                Topics
+                Open questions
               </h2>
               <ul className="mt-2 list-disc pl-5 space-y-1">
-                {summary.topics.map((t, i) => (
-                  <li key={i}>
-                    <strong>{t.name}</strong>
-                    {t.summary ? `: ${t.summary}` : null}
-                  </li>
+                {summary.openQuestions.map((q, i) => (
+                  <li key={i}>{q.text}</li>
                 ))}
               </ul>
             </div>

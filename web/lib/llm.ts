@@ -13,10 +13,11 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
 import { env } from "./env";
-import type { ActionItem, Decision, Topic } from "@/db/schema";
+import type { ActionItem, Decision, OpenQuestion } from "@/db/schema";
 
 const SummaryJsonSchema = z.object({
   summary: z.string().min(1),
+  next_step: z.string().nullable().optional(),
   action_items: z
     .array(
       z.object({
@@ -34,42 +35,50 @@ const SummaryJsonSchema = z.object({
       })
     )
     .default([]),
-  topics: z
-    .array(
-      z.object({
-        name: z.string(),
-        summary: z.string().nullable().optional(),
-      })
-    )
+  open_questions: z
+    .array(z.object({ text: z.string() }))
     .default([]),
 });
 
 export type StructuredSummary = {
   summary: string;
+  nextStep: string | null;
   actionItems: ActionItem[];
   decisions: Decision[];
-  topics: Topic[];
+  openQuestions: OpenQuestion[];
 };
 
-const SYSTEM_PROMPT = `You are summarizing a meeting transcript for the participants.
+// Held's Result Card model: ship the answer, not a recap.
+// Four headline fields shown in the UI; `summary` is kept for the email body
+// and the expanded transcript context view.
+const SYSTEM_PROMPT = `You are producing a Held "Result Card" for a meeting.
+Held ships the answer, not a transcript: a single next step, the decisions
+that were made, the action items with owners and deadlines, and any open
+questions left on the table.
 
 You will receive a transcript where each line is prefixed with the speaker's
-name, like "Sarah: I think we should ship Friday." Some speakers may be labeled
+name, like "Sarah: I think we should ship Friday." Speakers may be labeled
 generically (e.g. "Speaker 1") if the user did not name them.
 
 Produce a JSON object with exactly these top-level fields:
-  - "summary": a concise 3-6 sentence narrative summary, in the past tense
-  - "action_items": an array of objects { text, owner, due_date }
-      * owner is the name of the person who owns the action, or null
-      * due_date is a free-text deadline like "Friday" or "next sprint", or null
-  - "decisions": an array of objects { text, rationale }
-      * rationale is one sentence on why, or null
-  - "topics": an array of objects { name, summary }
-      * 2-6 topics that span the meeting; summary is one sentence
+  - "summary": 2-4 sentences of context, in the past tense. Used for the
+    email body, not the Result Card hero. Keep it factual.
+  - "next_step": ONE short sentence — the single most important next action
+    coming out of this meeting. Null only if the meeting truly produced
+    nothing actionable.
+  - "decisions": array of { text, rationale }. rationale is one sentence or
+    null. Include only decisions that were actually made.
+  - "action_items": array of { text, owner, due_date }.
+    * owner: the person's name if you can attribute it from the transcript
+      (either someone volunteered with "I'll" / "I can take that" or another
+      speaker assigned it). If the speaker is labeled "Speaker N" and you
+      cannot infer a real name, set owner to null. Never invent names.
+    * due_date: free-text like "Friday", "EOD", "next sprint", or null.
+  - "open_questions": array of { text }. Things raised but not resolved.
 
 Reply with ONLY a JSON object. No prose before or after, no markdown code
-fences. Use double quotes. Do not invent action items or decisions that were
-not actually discussed.`;
+fences. Use double quotes. Do not invent decisions, actions, or questions
+that were not actually discussed.`;
 
 const USER_PREFIX = "Here is the meeting transcript:\n\n";
 const USER_SUFFIX = "\n\nReturn the JSON object.";
@@ -97,6 +106,7 @@ export async function summarizeTranscript(
 
   return {
     summary: parsed.summary,
+    nextStep: parsed.next_step?.trim() || null,
     actionItems: parsed.action_items.map((a) => ({
       text: a.text,
       owner: a.owner ?? null,
@@ -106,10 +116,7 @@ export async function summarizeTranscript(
       text: d.text,
       rationale: d.rationale ?? null,
     })),
-    topics: parsed.topics.map((t) => ({
-      name: t.name,
-      summary: t.summary ?? null,
-    })),
+    openQuestions: parsed.open_questions.map((q) => ({ text: q.text })),
   };
 }
 
