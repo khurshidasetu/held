@@ -378,6 +378,7 @@ function ConsentGate({
 }) {
   return (
     <label
+      htmlFor="held-consent"
       className={`flex items-start gap-3 rounded-lg border p-4 cursor-pointer ${
         consented
           ? "border-brand bg-brand/5"
@@ -385,15 +386,10 @@ function ConsentGate({
       } ${disabled ? "opacity-60 cursor-not-allowed" : ""}`}
     >
       <input
+        id="held-consent"
         type="checkbox"
         checked={consented}
-        // onChange covers desktop + most mobile; onClick is a defensive
-        // fallback because iOS Safari has historically dropped React's
-        // synthetic onChange when a <label> wraps a checkbox.
         onChange={(e) => onChange(e.target.checked)}
-        onClick={(e) =>
-          onChange((e.currentTarget as HTMLInputElement).checked)
-        }
         disabled={disabled}
         className="mt-1 h-5 w-5 rounded border-border accent-brand"
       />
