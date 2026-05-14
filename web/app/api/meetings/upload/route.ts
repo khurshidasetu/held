@@ -20,6 +20,7 @@ import { db, meetings, attendees } from "@/db";
 import { audioKey, uploadBuffer } from "@/lib/storage";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 const AttendeeListSchema = z.array(z.string().email());
 

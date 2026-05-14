@@ -40,6 +40,7 @@ import { mergeTranscript, renderNamedTranscript } from "@/lib/merge-transcript";
 import { summarizeTranscript } from "@/lib/llm";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 export const maxDuration = 800;
 
 type Context = { params: Promise<{ id: string }> };

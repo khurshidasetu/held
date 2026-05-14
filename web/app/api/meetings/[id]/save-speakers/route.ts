@@ -23,6 +23,7 @@ import { db, meetings, speakers } from "@/db";
 import { env } from "@/lib/env";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 const BodySchema = z.object({
   detected: z.array(

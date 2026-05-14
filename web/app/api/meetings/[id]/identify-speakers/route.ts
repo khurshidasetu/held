@@ -21,6 +21,8 @@ import { extractSpeakerSamples } from "@/lib/extract-samples";
 import { getPresignedGetUrl, getInternalPresignedGetUrl } from "@/lib/storage";
 
 export const runtime = "nodejs";
+// Reads DB + calls external service, never prerender.
+export const dynamic = "force-dynamic";
 // Diarization can run 30-60s on short clips. Tell Next not to time out.
 export const maxDuration = 300;
 

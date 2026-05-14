@@ -174,15 +174,39 @@ async def _download(url: str) -> Path:
 
 
 def _probe_duration_seconds(path: Path) -> float:
-    """Return the audio duration in seconds via ffprobe."""
+    """
+    Return audio duration in seconds, trying three strategies in order.
+
+    MediaRecorder-produced WebM/Opus files (Chrome, Firefox, Android) often
+    have no duration in either the container header or the stream metadata,
+    because the format is streaming-oriented and MediaRecorder doesn't
+    rewrite the duration when the stream ends. So we fall back to packet
+    counting, which always works but is slower.
+    """
+    # Strategy 1: container-level format.duration. Fast, works for most files.
+    duration = _try_probe(path, ["format=duration"], key="format")
+    if duration is not None:
+        return duration
+
+    # Strategy 2: first audio stream's duration. Works for many containers
+    # even when format.duration is absent.
+    duration = _try_probe(path, ["stream=duration"], key="stream")
+    if duration is not None:
+        return duration
+
+    # Strategy 3: force ffprobe to actually count packets. ~100ms for a 30s
+    # clip; always works for valid audio.
     try:
         result = subprocess.run(
             [
                 "ffprobe",
                 "-v",
                 "error",
+                "-count_packets",
+                "-select_streams",
+                "a:0",
                 "-show_entries",
-                "format=duration",
+                "stream=duration",
                 "-of",
                 "json",
                 str(path),
@@ -190,14 +214,52 @@ def _probe_duration_seconds(path: Path) -> float:
             capture_output=True,
             text=True,
             check=True,
-            timeout=30,
+            timeout=60,
         )
         data = json.loads(result.stdout)
-        return float(data["format"]["duration"])
-    except (subprocess.CalledProcessError, json.JSONDecodeError, KeyError, ValueError) as e:
+        streams = data.get("streams", [])
+        if streams and "duration" in streams[0]:
+            return float(streams[0]["duration"])
+    except (subprocess.CalledProcessError, json.JSONDecodeError, ValueError) as e:
         raise HTTPException(
-            status_code=422, detail=f"Could not probe audio duration: {e}"
+            status_code=422,
+            detail=f"Could not probe audio duration after 3 attempts: {e}",
         )
+
+    raise HTTPException(
+        status_code=422,
+        detail="Could not probe audio duration: no duration found in container, stream, or packet count.",
+    )
+
+
+def _try_probe(path: Path, show_entries: list[str], key: str) -> float | None:
+    """Run ffprobe with the given -show_entries; return duration or None."""
+    args = ["ffprobe", "-v", "error"]
+    if key == "stream":
+        args += ["-select_streams", "a:0"]
+    args += ["-show_entries", *show_entries, "-of", "json", str(path)]
+
+    try:
+        result = subprocess.run(
+            args, capture_output=True, text=True, check=True, timeout=30
+        )
+        data = json.loads(result.stdout)
+    except (subprocess.CalledProcessError, json.JSONDecodeError):
+        return None
+
+    if key == "format":
+        d = data.get("format", {}).get("duration")
+    else:
+        streams = data.get("streams", [])
+        d = streams[0].get("duration") if streams else None
+
+    if d is None or d in ("N/A", ""):
+        return None
+    try:
+        v = float(d)
+    except (TypeError, ValueError):
+        return None
+    return v if v > 0 else None
 
 
 def _mock_segments(duration: float) -> list[Segment]:

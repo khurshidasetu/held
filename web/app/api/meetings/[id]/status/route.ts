@@ -8,6 +8,7 @@ import { eq, and } from "drizzle-orm";
 import { db, meetings } from "@/db";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 type Context = { params: Promise<{ id: string }> };
 

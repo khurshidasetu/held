@@ -12,6 +12,8 @@ import { env } from "@/lib/env";
 import { localReadStream, verifyLocalSignature } from "@/lib/storage";
 
 export const runtime = "nodejs";
+// Reads from the filesystem with a runtime-only HMAC check — never prerender.
+export const dynamic = "force-dynamic";
 
 type Context = { params: Promise<{ key: string[] }> };
 
