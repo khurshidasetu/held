@@ -38,6 +38,11 @@ type Props = {
 
 export function SpeakerNamingPopup({ speakers, onSubmit, onSkip }: Props) {
   const [names, setNames] = useState<Record<string, string>>({});
+  // Labels the user removed (diarization often clusters one person as two
+  // speakers; this lets them prune those duplicates). Removed speakers
+  // aren't sent on submit, so save-speakers will delete the row server-side
+  // and any words attributed to that label fall out of the transcript.
+  const [removed, setRemoved] = useState<Set<string>>(() => new Set());
   const [silents, setSilents] = useState<SilentEntry[]>([]);
   const [submitting, setSubmitting] = useState(false);
 
@@ -45,6 +50,21 @@ export function SpeakerNamingPopup({ speakers, onSubmit, onSkip }: Props) {
   // play button is pressed.
   const [playingLabel, setPlayingLabel] = useState<string | null>(null);
   const audioRefs = useRef<Map<string, HTMLAudioElement>>(new Map());
+
+  const visibleSpeakers = speakers.filter((s) => !removed.has(s.speakerLabel));
+
+  function removeDetected(label: string) {
+    // Pause its audio (if playing) before unmounting the <audio>.
+    if (playingLabel === label) {
+      audioRefs.current.get(label)?.pause();
+      setPlayingLabel(null);
+    }
+    setRemoved((prev) => {
+      const next = new Set(prev);
+      next.add(label);
+      return next;
+    });
+  }
 
   function setAudioRef(label: string) {
     return (el: HTMLAudioElement | null) => {
@@ -88,7 +108,7 @@ export function SpeakerNamingPopup({ speakers, onSubmit, onSkip }: Props) {
 
   async function handleContinue() {
     setSubmitting(true);
-    const detected = speakers.map((s) => ({
+    const detected = visibleSpeakers.map((s) => ({
       speakerLabel: s.speakerLabel,
       displayName: names[s.speakerLabel]?.trim() || null,
     }));
@@ -124,8 +144,8 @@ export function SpeakerNamingPopup({ speakers, onSubmit, onSkip }: Props) {
             id="speaker-naming-title"
             className="text-lg font-semibold tracking-tight"
           >
-            Who&rsquo;s who? We detected {speakers.length}{" "}
-            {speakers.length === 1 ? "speaker" : "speakers"} in this meeting.
+            Who&rsquo;s who? We detected {visibleSpeakers.length}{" "}
+            {visibleSpeakers.length === 1 ? "speaker" : "speakers"} in this meeting.
           </h2>
           <p className="text-sm text-muted-foreground mt-1">
             Name each speaker to make the transcript easier to read. You can
@@ -135,7 +155,13 @@ export function SpeakerNamingPopup({ speakers, onSubmit, onSkip }: Props) {
         </div>
 
         <div className="overflow-y-auto px-5 py-4 space-y-3">
-          {speakers.map((s, i) => {
+          {visibleSpeakers.length === 0 && (
+            <p className="text-sm text-muted-foreground italic">
+              All detected speakers were removed. Their words will be dropped
+              from the transcript.
+            </p>
+          )}
+          {visibleSpeakers.map((s, i) => {
             const label = `Speaker ${i + 1}`;
             const isPlaying = playingLabel === s.speakerLabel;
             return (
@@ -183,6 +209,16 @@ export function SpeakerNamingPopup({ speakers, onSubmit, onSkip }: Props) {
                   placeholder="Enter name (e.g., Sarah)"
                   className="tap-target flex-1 min-w-0 px-3 py-2 rounded-md border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-brand"
                 />
+
+                <button
+                  type="button"
+                  onClick={() => removeDetected(s.speakerLabel)}
+                  aria-label={`Remove ${label} (use when diarization split one person into two)`}
+                  title="Remove this speaker"
+                  className="tap-target inline-flex items-center justify-center rounded-md text-muted-foreground hover:text-red-600 hover:bg-red-500/10"
+                >
+                  <TrashIcon />
+                </button>
               </div>
             );
           })}

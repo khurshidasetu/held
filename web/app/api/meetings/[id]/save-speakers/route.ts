@@ -72,7 +72,23 @@ export async function POST(request: Request, ctx: Context) {
     return NextResponse.json({ error: "Invalid body" }, { status: 400 });
   }
 
-  // Update display names on detected speakers.
+  // Reconcile detected speakers: for each existing detected row (not a silent
+  // attendee), either update its display name (if the user kept it) or delete
+  // it (if the user removed it via the popup's trash button — diarization
+  // sometimes clusters one person as two, this lets them prune).
+  //
+  // Words attributed to a deleted speaker label fall out of the transcript:
+  // the merge step in /process drops utterances whose label has no matching
+  // speaker row (see lib/merge-transcript.ts → findSpeakerAt).
+  const existingDetected = await db
+    .select({ speakerLabel: speakers.speakerLabel })
+    .from(speakers)
+    .where(
+      and(eq(speakers.meetingId, id), eq(speakers.isSilentAttendee, false))
+    );
+
+  const keptLabels = new Set(body.detected.map((d) => d.speakerLabel));
+
   for (const d of body.detected) {
     const trimmed = d.displayName?.trim();
     await db
@@ -84,6 +100,19 @@ export async function POST(request: Request, ctx: Context) {
           eq(speakers.speakerLabel, d.speakerLabel)
         )
       );
+  }
+
+  for (const row of existingDetected) {
+    if (!keptLabels.has(row.speakerLabel)) {
+      await db
+        .delete(speakers)
+        .where(
+          and(
+            eq(speakers.meetingId, id),
+            eq(speakers.speakerLabel, row.speakerLabel)
+          )
+        );
+    }
   }
 
   // Insert silent attendees (empty names already filtered client-side, but
