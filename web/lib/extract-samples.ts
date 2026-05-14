@@ -16,7 +16,7 @@ import { Readable } from "node:stream";
 import { randomUUID } from "node:crypto";
 import ffmpegInstaller from "@ffmpeg-installer/ffmpeg";
 import ffmpeg from "fluent-ffmpeg";
-import { uploadBuffer, speakerSampleKey, getPresignedGetUrl } from "./s3";
+import { uploadBuffer, speakerSampleKey, getPresignedGetUrl } from "./storage";
 import type { DiarizationSegment } from "./diarization";
 import { groupBySpeaker } from "./diarization";
 

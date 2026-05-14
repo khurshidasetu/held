@@ -24,6 +24,15 @@ function optional(name: string): string | undefined {
   return process.env[name] || undefined;
 }
 
+import path from "node:path";
+
+export type StorageDriver = "local" | "s3";
+
+function resolveLocalDir(): string {
+  const raw = process.env.LOCAL_STORAGE_DIR || "./storage";
+  return path.isAbsolute(raw) ? raw : path.resolve(process.cwd(), raw);
+}
+
 export const env = {
   get appUrl() {
     return required("NEXT_PUBLIC_APP_URL");
@@ -33,7 +42,41 @@ export const env = {
     return required("DATABASE_URL");
   },
 
+  storage: {
+    /** "local" by default — easier dev. Set STORAGE_DRIVER=s3 to use AWS. */
+    get driver(): StorageDriver {
+      const v = (process.env.STORAGE_DRIVER || "local").toLowerCase();
+      if (v !== "local" && v !== "s3") {
+        throw new Error(`Invalid STORAGE_DRIVER: ${v} (expected "local" or "s3")`);
+      }
+      return v;
+    },
+    get localDir(): string {
+      return resolveLocalDir();
+    },
+    /**
+     * Base URL the diarization service and the browser fetch local files from.
+     * Defaults to NEXT_PUBLIC_APP_URL so a single env var covers both.
+     */
+    get localBaseUrl(): string {
+      return process.env.LOCAL_STORAGE_BASE_URL || required("NEXT_PUBLIC_APP_URL");
+    },
+    /**
+     * HMAC secret for signing local file URLs. Falls back to the internal
+     * worker secret so users don't have to set yet another env var; both
+     * are server-only random strings.
+     */
+    get localSignSecret(): string {
+      return (
+        process.env.LOCAL_STORAGE_SIGN_SECRET ||
+        required("INTERNAL_WORKER_SECRET")
+      );
+    },
+  },
+
   aws: {
+    // These are only accessed when STORAGE_DRIVER === "s3". With the local
+    // driver active, missing AWS vars never trigger a throw.
     get region() {
       return required("AWS_REGION");
     },

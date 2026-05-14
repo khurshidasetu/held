@@ -11,6 +11,10 @@ const isPublicRoute = createRouteMatcher([
   // Internal worker callback — authenticated with INTERNAL_WORKER_SECRET,
   // not a Clerk session.
   "/api/meetings/(.*)/process",
+  // Local-storage signed-URL endpoint — the HMAC token IS the auth, so
+  // we don't gate it on a Clerk session. The diarization service and
+  // <audio> tags both fetch it directly.
+  "/api/storage/(.*)",
 ]);
 
 export default clerkMiddleware(async (auth, req) => {

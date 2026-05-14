@@ -30,7 +30,7 @@ import {
   meetingSummaries,
 } from "@/db";
 import { env } from "@/lib/env";
-import { getPresignedGetUrl } from "@/lib/s3";
+import { getPresignedGetUrl } from "@/lib/storage";
 import {
   downloadToTemp,
   toPcm16kMono,

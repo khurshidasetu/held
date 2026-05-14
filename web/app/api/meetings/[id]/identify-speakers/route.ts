@@ -18,7 +18,7 @@ import { eq, and } from "drizzle-orm";
 import { db, meetings, speakers } from "@/db";
 import { diarize } from "@/lib/diarization";
 import { extractSpeakerSamples } from "@/lib/extract-samples";
-import { getPresignedGetUrl } from "@/lib/s3";
+import { getPresignedGetUrl } from "@/lib/storage";
 
 export const runtime = "nodejs";
 // Diarization can run 30-60s on short clips. Tell Next not to time out.

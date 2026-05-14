@@ -17,7 +17,7 @@ import { eq } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { db, meetings, attendees } from "@/db";
-import { audioKey, uploadBuffer } from "@/lib/s3";
+import { audioKey, uploadBuffer } from "@/lib/storage";
 
 export const runtime = "nodejs";
 
