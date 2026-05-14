@@ -8,6 +8,13 @@ const nextConfig: NextConfig = {
   // server bundle so Node can require() the platform-native binary at runtime.
   serverExternalPackages: ["fluent-ffmpeg", "@ffmpeg-installer/ffmpeg"],
 
+  // Next 16 hardens dev: requests whose Host header isn't in this list (or
+  // the localhost set) get rejected with a security error. We tunnel via
+  // ngrok for mobile testing, so allow any of their public subdomains.
+  // Drop these (or replace with a stable subdomain) when we move off the
+  // free tier / random subdomain.
+  allowedDevOrigins: ["*.ngrok-free.app", "*.ngrok.app", "*.ngrok.io"],
+
   images: {
     // Allow next/image to optimize anything we serve from our own S3 bucket
     // (presigned URLs only — bucket is private at the object level).
