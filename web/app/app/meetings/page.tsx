@@ -35,7 +35,7 @@ export default async function PreviousMeetingsPage() {
     .limit(50);
 
   return (
-    <div className="space-y-6">
+    <div className="page-fade space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <Link

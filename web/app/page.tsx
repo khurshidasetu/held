@@ -7,7 +7,7 @@ export default async function LandingPage() {
   if (userId) redirect("/app");
 
   return (
-    <main className="relative flex-1 flex flex-col items-center justify-center px-6 py-12 overflow-hidden">
+    <main className="page-fade relative flex-1 flex flex-col items-center justify-center px-6 py-12 overflow-hidden">
       {/* Soft indigo glow — radial blooms from the top and a faint hint
           bottom-right. Sits behind the content; pointer-events-none so it
           never intercepts clicks. The colors come from the brand token so

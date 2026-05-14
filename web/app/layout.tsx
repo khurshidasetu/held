@@ -1,12 +1,23 @@
 import type { Metadata, Viewport } from "next";
-import { EB_Garamond, Geist_Mono } from "next/font/google";
+import { Fraunces, EB_Garamond, Geist_Mono } from "next/font/google";
 import { ClerkProvider } from "@clerk/nextjs";
 import "./globals.css";
 
-// EB Garamond — variable-weight serif. next/font self-hosts it under
-// /_next/static, so no external Google Fonts request at runtime.
-const ebGaramond = EB_Garamond({
+// Fraunces — primary face. Variable axes for weight, italic, and optical
+// size. next/font self-hosts it under /_next/static (no runtime Google
+// Fonts request).
+const fraunces = Fraunces({
   variable: "--font-serif",
+  subsets: ["latin"],
+  axes: ["opsz"],
+  display: "swap",
+});
+
+// EB Garamond — kept loaded as a secondary serif. Available under
+// --font-eb-garamond if/when we want to differentiate (e.g. running text
+// in long passages vs. display).
+const ebGaramond = EB_Garamond({
+  variable: "--font-eb-garamond",
   subsets: ["latin"],
   display: "swap",
 });
@@ -58,7 +69,7 @@ export default function RootLayout({
     <ClerkProvider afterSignOutUrl="/">
       <html
         lang="en"
-        className={`${ebGaramond.variable} ${geistMono.variable} h-full antialiased`}
+        className={`${fraunces.variable} ${ebGaramond.variable} ${geistMono.variable} h-full antialiased`}
         suppressHydrationWarning
       >
         <head>

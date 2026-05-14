@@ -254,17 +254,27 @@ export function Recorder({
         />
       )}
 
-      <div className="rounded-lg border border-border bg-card p-6 flex flex-col items-center gap-4">
+      <div className="rounded-lg border border-border bg-card p-6 flex flex-col items-center gap-5">
         {phase === "idle" && (
           <button
             type="button"
             onClick={startRecording}
             disabled={!consented}
-            className="tap-target inline-flex items-center justify-center gap-2 px-6 py-3 rounded-full bg-brand text-brand-foreground font-medium hover:bg-brand-hover disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            aria-label="Record"
+            className="group relative inline-flex items-center justify-center w-28 h-28 rounded-full bg-brand text-brand-foreground hover:bg-brand-hover disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-300 shadow-xl shadow-brand/30 hover:shadow-2xl hover:shadow-brand/40 hover:scale-[1.03] active:scale-95"
           >
-            <span className="w-2.5 h-2.5 rounded-full bg-brand-foreground" />
-            Record
+            {/* Concentric dot — the universal "record" affordance. */}
+            <span
+              className="block w-7 h-7 rounded-full bg-brand-foreground transition-transform duration-300 group-hover:scale-110"
+              aria-hidden="true"
+            />
           </button>
+        )}
+
+        {phase === "idle" && (
+          <span className="text-sm text-muted-foreground">
+            {consented ? "Tap to record" : "Acknowledge consent to enable"}
+          </span>
         )}
 
         {phase === "recording" && (
@@ -274,17 +284,25 @@ export function Recorder({
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-500 opacity-75" />
                 <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500" />
               </span>
-              <span className="text-2xl font-mono tabular-nums">
+              <span className="text-3xl font-mono tabular-nums">
                 {formatTime(elapsed)}
               </span>
             </div>
             <button
               type="button"
               onClick={stopRecording}
-              className="tap-target inline-flex items-center justify-center px-6 py-3 rounded-full bg-foreground text-background font-medium hover:opacity-90"
+              aria-label="Stop"
+              className="inline-flex items-center justify-center w-28 h-28 rounded-full bg-foreground text-background transition-all duration-300 shadow-xl shadow-foreground/20 hover:shadow-2xl hover:shadow-foreground/30 hover:scale-[1.03] active:scale-95"
             >
-              Stop
+              {/* Square — the universal "stop" affordance. */}
+              <span
+                className="block w-7 h-7 rounded-md bg-background"
+                aria-hidden="true"
+              />
             </button>
+            <span className="text-sm text-muted-foreground">
+              Tap to stop
+            </span>
           </>
         )}
 

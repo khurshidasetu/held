@@ -7,7 +7,12 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 :root {
-  --background: #ffffff;
+  /* Light mode is no longer pure white. A soft violet→indigo→pink tint
+     gives the page a warmer, more editorial feel against the serif. Card
+     surfaces stay near-white so they pop against the tinted body. */
+  --background: #f3f0ff;            /* deepest tint, top-left of gradient */
+  --background-2: #e9e7ff;          /* mid-stop */
+  --background-3: #f7e8ee;          /* bottom-right warm rose tint */
   --foreground: #0f172a;
   --muted: #64748b;
   --muted-foreground: #475569;
@@ -42,15 +47,17 @@
 }
 
 .dark {
-  --background: #0b1020;
+  --background: #0a0a18;
+  --background-2: #0f1230;
+  --background-3: #1a1230;
   --foreground: #f1f5f9;
   --muted: #94a3b8;
   --muted-foreground: #cbd5e1;
   --border: #1e293b;
   --card: #0f172a;
   --card-foreground: #f1f5f9;
-  --brand: #6366f1;
-  --brand-hover: #818cf8;
+  --brand: #818cf8;
+  --brand-hover: #a5b4fc;
 }
 
 /* Light-mode browsers (form controls, scrollbars, autofill) get the right
@@ -68,8 +75,29 @@ body {
   color: var(--foreground);
 }
 
+html {
+  /* Full-bleed gradient applied to <html> so even short pages cover the
+     viewport. Diagonal-ish: top-left tint, mid violet, warm rose at the
+     bottom-right. Both light and dark modes get the same shape; the var
+     values do the work. The fixed attachment keeps the gradient stable
+     while pages scroll, so transitions feel calmer. */
+  background:
+    linear-gradient(
+      135deg,
+      var(--background) 0%,
+      var(--background-2) 55%,
+      var(--background-3) 100%
+    )
+    fixed;
+  /* Variable axes for Fraunces. SOFT=0 / WONK=0 = the most refined,
+     business-serif rendering (no swashes, no quirk). */
+  font-variation-settings: "SOFT" 0, "WONK" 0;
+  font-optical-sizing: auto;
+}
+
 body {
   font-family: var(--font-sans), Georgia, Cambria, "Times New Roman", Times, serif;
+  background: transparent; /* let the <html> gradient show through */
   -webkit-font-smoothing: antialiased;
   /* Serif faces tend to read better with a touch more leading. */
   line-height: 1.55;
@@ -88,4 +116,26 @@ button:not(:disabled),
 [role="button"]:not(:disabled),
 summary {
   cursor: pointer;
+}
+
+/* Per-page entrance: every page root is wrapped with .page-fade so each
+   navigation feels intentional rather than abrupt. The component remounts
+   on route change → keyframe runs each time. */
+@keyframes pageFade {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.page-fade {
+  animation: pageFade 320ms cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .page-fade {
+    animation: none;
+  }
 }

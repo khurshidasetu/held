@@ -41,7 +41,7 @@ export function MeetingProcessingState({ meeting }: { meeting: Meeting }) {
   }, [meeting.id, router]);
 
   return (
-    <div className="flex flex-col items-center justify-center py-20 text-center space-y-4">
+    <div className="page-fade flex flex-col items-center justify-center py-20 text-center space-y-4">
       <div className="h-10 w-10 rounded-full border-4 border-brand/20 border-t-brand animate-spin" />
       <div>
         <div className="font-medium">Processing your meeting&hellip;</div>

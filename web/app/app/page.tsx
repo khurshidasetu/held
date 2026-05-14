@@ -18,7 +18,7 @@ export default async function CapturePage() {
     .where(eq(meetings.userId, userId));
 
   return (
-    <div className="flex flex-col items-center text-center pt-6 sm:pt-16 pb-12 px-4">
+    <div className="page-fade flex flex-col items-center text-center pt-6 sm:pt-16 pb-12 px-4">
       <div className="max-w-md w-full space-y-6">
         <div className="space-y-2">
           <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight">

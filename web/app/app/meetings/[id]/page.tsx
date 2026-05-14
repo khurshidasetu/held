@@ -44,7 +44,7 @@ export default async function MeetingPage({ params }: PageProps) {
 
   if (meeting.status === "awaiting_speaker_naming") {
     return (
-      <div className="space-y-4">
+      <div className="page-fade space-y-4">
         <BackLink />
         <h1 className="text-2xl font-semibold">{meeting.title}</h1>
         <div className="rounded-lg border border-border bg-card p-6 text-sm text-muted-foreground">
@@ -57,7 +57,7 @@ export default async function MeetingPage({ params }: PageProps) {
 
   if (meeting.status === "failed") {
     return (
-      <div className="space-y-4">
+      <div className="page-fade space-y-4">
         <BackLink />
         <h1 className="text-2xl font-semibold">{meeting.title}</h1>
         <div className="rounded-lg border border-red-500/30 bg-red-500/5 p-6 text-sm text-red-700 dark:text-red-300">
@@ -110,7 +110,7 @@ export default async function MeetingPage({ params }: PageProps) {
   );
 
   return (
-    <div className="space-y-6">
+    <div className="page-fade space-y-6">
       <header className="space-y-1">
         <BackLink />
         <h1 className="text-2xl font-semibold tracking-tight mt-1">
