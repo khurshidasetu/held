@@ -26,16 +26,19 @@ const nextConfig: NextConfig = {
 
 const isDev = process.env.NODE_ENV === "development";
 
+// `@ducanh2912/next-pwa` is a webpack plugin. Even with `disable: true` it
+// injects a webpack hook that Next 16's Turbopack-default mode rejects. So
+// in dev we ship nextConfig as-is (no SW anyway), and only wrap with the PWA
+// HOC for production builds. The production build script already passes
+// `--webpack`, so the conflict doesn't arise there.
 const withPWAConfig = withPWA({
   dest: "public",
-  // Disable in dev — the SW caches aggressively and gets in the way of HMR.
   disable: isDev,
   register: true,
-  // Auto-skip waiting so an updated SW takes over without a forced reload.
   workboxOptions: {
     skipWaiting: true,
     clientsClaim: true,
   },
 });
 
-export default withPWAConfig(nextConfig);
+export default isDev ? nextConfig : withPWAConfig(nextConfig);
