@@ -16,8 +16,9 @@ web/public/worker-*.js
 web/public/worker-*.js.map
 web/public/fallback-*.js
 
-# Drizzle
-drizzle/
+# Drizzle migrations are intentionally tracked — they're versioned artifacts
+# generated from db/schema.ts. Drizzle Studio caches and similar go below if
+# they ever show up.
 
 # ───────── Python / FastAPI ─────────
 __pycache__/
