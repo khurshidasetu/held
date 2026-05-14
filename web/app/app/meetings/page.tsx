@@ -3,6 +3,7 @@ import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import { desc, eq } from "drizzle-orm";
 import { db, meetings, type MeetingStatus } from "@/db";
+import { DeleteMeetingButton } from "./DeleteMeetingButton";
 
 export const dynamic = "force-dynamic";
 
@@ -65,10 +66,15 @@ export default async function PreviousMeetingsPage() {
       ) : (
         <ul className="divide-y divide-border border border-border rounded-lg overflow-hidden bg-card">
           {list.map((m) => (
-            <li key={m.id}>
+            <li
+              key={m.id}
+              className="flex items-center hover:bg-foreground/5"
+            >
+              {/* Body navigates to the meeting; delete button is a sibling
+                  so we don't nest a <button> inside the <Link>. */}
               <Link
                 href={`/app/meetings/${m.id}`}
-                className="flex items-center justify-between gap-4 px-4 py-3 hover:bg-foreground/5"
+                className="flex-1 min-w-0 flex items-center justify-between gap-4 px-4 py-3"
               >
                 <div className="min-w-0">
                   <div className="font-medium truncate">{m.title}</div>
@@ -85,6 +91,9 @@ export default async function PreviousMeetingsPage() {
                   {statusLabels[m.status]}
                 </span>
               </Link>
+              <div className="shrink-0 pr-2">
+                <DeleteMeetingButton meetingId={m.id} title={m.title} />
+              </div>
             </li>
           ))}
         </ul>

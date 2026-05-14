@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { UserButton } from "@clerk/nextjs";
+import { ThemeToggle } from "./ThemeToggle";
 
 export function Header() {
   return (
@@ -14,13 +15,14 @@ export function Header() {
           </span>
           <span>Held</span>
         </Link>
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-2 sm:gap-4">
           <Link
             href="/app/meetings"
             className="tap-target hidden sm:inline-flex items-center px-3 py-1.5 rounded-md text-sm text-muted-foreground hover:text-foreground hover:bg-foreground/5"
           >
             Previous meetings
           </Link>
+          <ThemeToggle />
           <UserButton />
         </div>
       </div>

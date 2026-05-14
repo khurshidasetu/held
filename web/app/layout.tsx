@@ -44,6 +44,11 @@ export const viewport: Viewport = {
   viewportFit: "cover",
 };
 
+// Inline so it runs *before* React hydration → no light-mode flash for
+// users who have opted into dark. Default is light; only switches if the
+// user's stored preference is "dark".
+const themeBootstrap = `(function(){try{var t=localStorage.getItem('held:theme');if(t==='dark')document.documentElement.classList.add('dark');}catch(e){}})();`;
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -54,7 +59,11 @@ export default function RootLayout({
       <html
         lang="en"
         className={`${ebGaramond.variable} ${geistMono.variable} h-full antialiased`}
+        suppressHydrationWarning
       >
+        <head>
+          <script dangerouslySetInnerHTML={{ __html: themeBootstrap }} />
+        </head>
         <body className="min-h-full flex flex-col">{children}</body>
       </html>
     </ClerkProvider>

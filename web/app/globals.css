@@ -1,5 +1,11 @@
 @import "tailwindcss";
 
+/* Tailwind v4 dark-mode strategy: class-based instead of @media. We default
+   to light, opt into dark explicitly via a `.dark` class on <html> (set by
+   the toggle, persisted in localStorage, applied pre-paint by the inline
+   script in app/layout.tsx). */
+@custom-variant dark (&:where(.dark, .dark *));
+
 :root {
   --background: #ffffff;
   --foreground: #0f172a;
@@ -35,18 +41,25 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0b1020;
-    --foreground: #f1f5f9;
-    --muted: #94a3b8;
-    --muted-foreground: #cbd5e1;
-    --border: #1e293b;
-    --card: #0f172a;
-    --card-foreground: #f1f5f9;
-    --brand: #6366f1;
-    --brand-hover: #818cf8;
-  }
+.dark {
+  --background: #0b1020;
+  --foreground: #f1f5f9;
+  --muted: #94a3b8;
+  --muted-foreground: #cbd5e1;
+  --border: #1e293b;
+  --card: #0f172a;
+  --card-foreground: #f1f5f9;
+  --brand: #6366f1;
+  --brand-hover: #818cf8;
+}
+
+/* Light-mode browsers (form controls, scrollbars, autofill) get the right
+   contrast by default. The .dark class also flips this. */
+:root {
+  color-scheme: light;
+}
+.dark {
+  color-scheme: dark;
 }
 
 html,

@@ -22,6 +22,8 @@ import {
   S3Client,
   PutObjectCommand,
   GetObjectCommand,
+  DeleteObjectsCommand,
+  ListObjectsV2Command,
   type PutObjectCommandInput,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
@@ -59,6 +61,15 @@ export async function getPresignedGetUrl(
     return localSignedUrl(key, expiresInSeconds, env.storage.localBaseUrl);
   }
   return s3SignedUrl(key, expiresInSeconds);
+}
+
+/**
+ * Recursively delete everything under `prefix` (e.g. "meetings/<id>" or
+ * "speaker-samples/<id>"). Best-effort: missing prefixes are not an error.
+ */
+export async function deleteUnder(prefix: string): Promise<void> {
+  if (env.storage.driver === "local") return localDeleteUnder(prefix);
+  return s3DeleteUnder(prefix);
 }
 
 /**
@@ -152,6 +163,17 @@ export function verifyLocalSignature(
   }
 }
 
+async function localDeleteUnder(prefix: string): Promise<void> {
+  const root = env.storage.localDir;
+  let abs: string;
+  try {
+    abs = safeJoin(root, prefix);
+  } catch {
+    return; // bad prefix — refuse silently rather than risk a wider rm
+  }
+  await fs.rm(abs, { recursive: true, force: true }).catch(() => {});
+}
+
 export async function localReadStream(key: string): Promise<{
   buffer: Buffer;
   contentType: string;
@@ -235,6 +257,36 @@ async function s3SignedUrl(
     new GetObjectCommand({ Bucket: env.aws.bucket, Key: key }),
     { expiresIn: expiresInSeconds }
   );
+}
+
+async function s3DeleteUnder(prefix: string): Promise<void> {
+  // Page through ListObjectsV2 and batch-delete up to 1000 objects per call,
+  // which is the DeleteObjects max. Continues until the prefix is empty.
+  let continuationToken: string | undefined;
+  do {
+    const list = await s3().send(
+      new ListObjectsV2Command({
+        Bucket: env.aws.bucket,
+        Prefix: prefix.endsWith("/") ? prefix : `${prefix}/`,
+        ContinuationToken: continuationToken,
+      })
+    );
+    const keys = (list.Contents ?? [])
+      .map((o) => o.Key)
+      .filter((k): k is string => typeof k === "string");
+    if (keys.length > 0) {
+      await s3().send(
+        new DeleteObjectsCommand({
+          Bucket: env.aws.bucket,
+          Delete: {
+            Objects: keys.map((Key) => ({ Key })),
+            Quiet: true,
+          },
+        })
+      );
+    }
+    continuationToken = list.IsTruncated ? list.NextContinuationToken : undefined;
+  } while (continuationToken);
 }
 
 // ── Misc ──────────────────────────────────────────────────────────────
