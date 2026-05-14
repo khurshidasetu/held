@@ -29,6 +29,11 @@ export type Word = {
 const CARTESIA_STT_URL =
   "wss://api.cartesia.ai/stt/websocket?model=ink-whisper&language=en&encoding=pcm_s16le&sample_rate=16000";
 
+// Cartesia requires a date-stamped version header on every request — without
+// it the WS handshake returns 400 ("Cartesia-Version header is required").
+// Latest at time of writing per their own error response.
+const CARTESIA_VERSION = "2026-03-01";
+
 type CartesiaWord = {
   word?: string;
   text?: string;
@@ -55,7 +60,10 @@ type CartesiaMessage = {
 export function transcribePcm(pcm: Buffer): Promise<Word[]> {
   return new Promise((resolve, reject) => {
     const ws = new WebSocket(CARTESIA_STT_URL, {
-      headers: { "X-API-Key": env.cartesia.apiKey },
+      headers: {
+        "X-API-Key": env.cartesia.apiKey,
+        "Cartesia-Version": CARTESIA_VERSION,
+      },
     });
 
     const words: Word[] = [];
