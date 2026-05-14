@@ -1,0 +1,9 @@
+# Mock-mode requirements — no torch, no pyannote. Used by Dockerfile.mock.
+# The mock pipeline calls ffprobe (from the ffmpeg apt package) to determine
+# the real audio duration, then synthesizes plausible speaker segments.
+
+fastapi==0.115.0
+uvicorn[standard]==0.32.0
+python-multipart==0.0.12
+pydantic==2.9.2
+httpx==0.27.2

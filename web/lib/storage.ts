@@ -55,7 +55,27 @@ export async function getPresignedGetUrl(
   key: string,
   expiresInSeconds = 3600
 ): Promise<string> {
-  if (env.storage.driver === "local") return localSignedUrl(key, expiresInSeconds);
+  if (env.storage.driver === "local") {
+    return localSignedUrl(key, expiresInSeconds, env.storage.localBaseUrl);
+  }
+  return s3SignedUrl(key, expiresInSeconds);
+}
+
+/**
+ * Same as getPresignedGetUrl, but uses the *internal* base URL — meant for
+ * URLs we hand to services running inside Docker (e.g. the diarization
+ * container) where `localhost` from inside the container doesn't reach the
+ * host. The HMAC signature is over the key, not the URL prefix, so the same
+ * route handler accepts either URL.
+ */
+export async function getInternalPresignedGetUrl(
+  key: string,
+  expiresInSeconds = 3600
+): Promise<string> {
+  if (env.storage.driver === "local") {
+    return localSignedUrl(key, expiresInSeconds, env.storage.internalBaseUrl);
+  }
+  // S3 URLs are public-internet by definition; "internal" doesn't apply.
   return s3SignedUrl(key, expiresInSeconds);
 }
 
@@ -89,7 +109,11 @@ async function localUpload({
   await fs.writeFile(dest, buf);
 }
 
-function localSignedUrl(key: string, expiresInSeconds: number): string {
+function localSignedUrl(
+  key: string,
+  expiresInSeconds: number,
+  baseUrl: string
+): string {
   const exp = Math.floor(Date.now() / 1000) + expiresInSeconds;
   const sig = signLocalKey(key, exp);
   // Encode the key as a path. The route handler stitches the segments back
@@ -98,7 +122,7 @@ function localSignedUrl(key: string, expiresInSeconds: number): string {
     .split("/")
     .map((seg) => encodeURIComponent(seg))
     .join("/");
-  return `${env.storage.localBaseUrl}/api/storage/${encodedKey}?exp=${exp}&sig=${sig}`;
+  return `${baseUrl}/api/storage/${encodedKey}?exp=${exp}&sig=${sig}`;
 }
 
 export function signLocalKey(key: string, exp: number): string {

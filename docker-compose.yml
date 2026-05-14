@@ -12,6 +12,48 @@
 # (default: root/root on localhost:3306, database "minutely").
 
 services:
+  # ─── Diarization service ────────────────────────────────────────────
+  #
+  # Three modes available, switch via the `dockerfile:` line below + the
+  # DIARIZATION_MODE env var in diarization/.env:
+  #
+  #   • Dockerfile.mock (default) — tiny image, returns synthetic speaker
+  #     segments. No HF account or GPU needed. Good for end-to-end testing
+  #     the rest of the pipeline locally.
+  #   • Dockerfile.cpu  — real pyannote.audio on CPU. Slow (10–30× realtime)
+  #     but accurate. Requires HUGGINGFACE_TOKEN + accepted model terms.
+  #   • Dockerfile     — real pyannote.audio on GPU. Production target.
+  #
+  # First start of a real-mode image downloads ~1 GB of model weights into
+  # the named volume `minutely-hf-cache`. Subsequent starts are fast.
+  diarization:
+    build:
+      context: ./diarization
+      dockerfile: Dockerfile.mock
+    image: minutely-diarization:mock
+    container_name: minutely-diarization
+    restart: unless-stopped
+    env_file:
+      - ./diarization/.env
+    ports:
+      - "127.0.0.1:8000:8000"
+    volumes:
+      # Persist model weights across container replacements.
+      - minutely-hf-cache:/root/.cache/huggingface
+      - minutely-torch-cache:/root/.cache/torch
+    extra_hosts:
+      # Lets the diarization container reach the host's localhost:3000
+      # (the Next.js dev server) at http://host.docker.internal:3000.
+      # Docker Desktop on Mac/Windows resolves this automatically; on Linux,
+      # this mapping makes it work too.
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 60
+      start_period: 90s
+
   mysql:
     build:
       context: ./infra/mysql
@@ -48,3 +90,7 @@ services:
 volumes:
   minutely-mysql-data:
     name: minutely-mysql-data
+  minutely-hf-cache:
+    name: minutely-hf-cache
+  minutely-torch-cache:
+    name: minutely-torch-cache

@@ -23,10 +23,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-COPY requirements.txt /app/requirements.txt
+# Install torch/torchaudio from the cu121 wheel index first so pyannote
+# (installed next, from requirements.txt) doesn't pull CPU variants.
 RUN python -m pip install --upgrade pip \
-    && pip install --extra-index-url https://download.pytorch.org/whl/cu121 \
-        -r requirements.txt
+    && pip install --index-url https://download.pytorch.org/whl/cu121 \
+        torch==2.4.1 torchaudio==2.4.1
+
+COPY requirements.txt /app/requirements.txt
+RUN pip install -r requirements.txt
 
 COPY app /app/app
 

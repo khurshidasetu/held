@@ -1,6 +1,8 @@
 # Pinned to known-good versions for pyannote.audio 3.x on Python 3.11.
-# Bump cautiously — pyannote pulls in torch and the wrong combination produces
-# silent CPU fallbacks or CUDA mismatches on a GPU VPS.
+#
+# torch and torchaudio are NOT listed here — each Dockerfile installs them
+# from the appropriate PyTorch index (cu121 for the GPU image, cpu for the
+# dev image). Pinning here would force one or the other.
 
 fastapi==0.115.0
 uvicorn[standard]==0.32.0
@@ -10,5 +12,3 @@ pydantic==2.9.2
 httpx==0.27.2
 
 pyannote.audio==3.3.2
-torch==2.4.1
-torchaudio==2.4.1

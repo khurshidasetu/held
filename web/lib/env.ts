@@ -55,11 +55,24 @@ export const env = {
       return resolveLocalDir();
     },
     /**
-     * Base URL the diarization service and the browser fetch local files from.
-     * Defaults to NEXT_PUBLIC_APP_URL so a single env var covers both.
+     * Base URL the *browser* uses to fetch local files (speaker samples in
+     * the popup, etc.). Defaults to NEXT_PUBLIC_APP_URL.
      */
     get localBaseUrl(): string {
       return process.env.LOCAL_STORAGE_BASE_URL || required("NEXT_PUBLIC_APP_URL");
+    },
+    /**
+     * Base URL the diarization service uses to fetch local files. Defaults
+     * to localBaseUrl, but when the diarization service runs in Docker on
+     * the same machine, set this to http://host.docker.internal:3000 so the
+     * container can reach the Next.js dev server on the host.
+     */
+    get internalBaseUrl(): string {
+      return (
+        process.env.INTERNAL_STORAGE_BASE_URL ||
+        process.env.LOCAL_STORAGE_BASE_URL ||
+        required("NEXT_PUBLIC_APP_URL")
+      );
     },
     /**
      * HMAC secret for signing local file URLs. Falls back to the internal

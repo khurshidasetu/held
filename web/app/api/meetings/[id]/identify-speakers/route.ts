@@ -18,7 +18,7 @@ import { eq, and } from "drizzle-orm";
 import { db, meetings, speakers } from "@/db";
 import { diarize } from "@/lib/diarization";
 import { extractSpeakerSamples } from "@/lib/extract-samples";
-import { getPresignedGetUrl } from "@/lib/storage";
+import { getPresignedGetUrl, getInternalPresignedGetUrl } from "@/lib/storage";
 
 export const runtime = "nodejs";
 // Diarization can run 30-60s on short clips. Tell Next not to time out.
@@ -56,12 +56,22 @@ export async function POST(_req: Request, ctx: Context) {
     );
   }
 
-  // Presigned URL the diarization service can fetch from.
-  const audioPresignedUrl = await getPresignedGetUrl(meeting.audioUrl, 30 * 60);
+  // Two URLs over the same key:
+  //   - audioUrlForDiarization: handed to the diarization service. When that
+  //     service runs in Docker, the URL uses host.docker.internal so the
+  //     container can reach our dev server on the host.
+  //   - audioUrlForLocal:       used by extractSpeakerSamples, which runs in
+  //     *this* process on the host — plain localhost is fine and avoids a
+  //     pointless trip through Docker's networking.
+  const audioUrlForDiarization = await getInternalPresignedGetUrl(
+    meeting.audioUrl,
+    30 * 60
+  );
+  const audioUrlForLocal = await getPresignedGetUrl(meeting.audioUrl, 30 * 60);
 
   let segments;
   try {
-    segments = await diarize(audioPresignedUrl);
+    segments = await diarize(audioUrlForDiarization);
   } catch (err) {
     console.error(`[identify-speakers] diarization failed for ${id}:`, err);
     await db
@@ -87,7 +97,7 @@ export async function POST(_req: Request, ctx: Context) {
 
   const { sampleUrlsByLabel, speakerLabels } = await extractSpeakerSamples({
     meetingId: id,
-    audioSourceUrl: audioPresignedUrl,
+    audioSourceUrl: audioUrlForLocal,
     segments,
   });
 
