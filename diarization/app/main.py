@@ -218,6 +218,47 @@ def _probe_duration_seconds(path: Path) -> float:
     )
 
 
+def _transcode_to_wav(src: Path, dst: Path) -> None:
+    """
+    Convert any ffmpeg-readable audio at `src` into 16 kHz mono PCM WAV
+    at `dst`. Required for real-mode pyannote, which reads via soundfile
+    (libsndfile) — and libsndfile can't decode WebM/Opus or some MP4
+    containers. ffmpeg autodetects the input format.
+    """
+    try:
+        subprocess.run(
+            [
+                "ffmpeg",
+                "-hide_banner",
+                "-nostdin",
+                "-y",
+                "-i",
+                str(src),
+                "-ar",
+                "16000",
+                "-ac",
+                "1",
+                "-f",
+                "wav",
+                str(dst),
+            ],
+            check=True,
+            capture_output=True,
+            timeout=600,
+        )
+    except subprocess.CalledProcessError as e:
+        stderr = (e.stderr or b"").decode("utf-8", "replace")[-500:]
+        raise HTTPException(
+            status_code=422,
+            detail=f"ffmpeg transcode failed: {stderr}",
+        )
+    except subprocess.TimeoutExpired:
+        raise HTTPException(
+            status_code=504,
+            detail="ffmpeg transcode timed out",
+        )
+
+
 def _try_probe_count_packets(path: Path) -> float | None:
     try:
         result = subprocess.run(
@@ -376,7 +417,19 @@ async def diarize(
         # Real mode
         if state.pipeline is None:
             raise HTTPException(status_code=503, detail="Pipeline not loaded yet.")
-        diarization = state.pipeline(str(audio_path))  # type: ignore[operator]
+
+        # pyannote loads audio via soundfile (libsndfile), which doesn't
+        # decode WebM/Opus or some MP4 containers — exactly what browsers
+        # record. Transcode to a 16 kHz mono WAV first; ffmpeg autodetects
+        # the input container.
+        wav_path = audio_path.with_suffix(".wav")
+        _transcode_to_wav(audio_path, wav_path)
+
+        try:
+            diarization = state.pipeline(str(wav_path))  # type: ignore[operator]
+        finally:
+            wav_path.unlink(missing_ok=True)
+
         segments: list[Segment] = []
         for turn, _track, speaker in diarization.itertracks(yield_label=True):
             segments.append(
