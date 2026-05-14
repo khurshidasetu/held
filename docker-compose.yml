@@ -1,0 +1,50 @@
+# Local development services for Minutely.
+#
+# Usage:
+#   docker compose up -d                 # start MySQL in the background
+#   docker compose logs -f mysql         # tail the MySQL log
+#   docker compose ps                    # see status
+#   docker compose down                  # stop (data persists in the volume)
+#   docker compose down -v               # stop AND wipe the data volume
+#
+# The web app reads DATABASE_URL from web/.env.local, NOT from this file.
+# Make sure the credentials there match what the container exposes
+# (default: root/root on localhost:3306, database "minutely").
+
+services:
+  mysql:
+    build:
+      context: ./infra/mysql
+    image: minutely-mysql:local
+    container_name: minutely-mysql
+    restart: unless-stopped
+    environment:
+      # The base image creates this database on first start. The init SQL
+      # in infra/mysql/init/ also adds an application user; pick either set
+      # of credentials for DATABASE_URL.
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: minutely
+      TZ: UTC
+    ports:
+      # host:container — bind to localhost only so the DB isn't exposed
+      # outside this machine.
+      - "127.0.0.1:3306:3306"
+    volumes:
+      - minutely-mysql-data:/var/lib/mysql
+    healthcheck:
+      test:
+        - "CMD"
+        - "mysqladmin"
+        - "ping"
+        - "-h"
+        - "127.0.0.1"
+        - "-uroot"
+        - "-proot"
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 30s
+
+volumes:
+  minutely-mysql-data:
+    name: minutely-mysql-data

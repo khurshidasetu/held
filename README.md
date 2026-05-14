@@ -69,18 +69,47 @@ minutely/
 - Accounts at Clerk, Cartesia, Anthropic, Postmark, and Hugging Face
 - For diarization in production: a GPU VPS (see `diarization/README.md`)
 
-### 1. Web app
+### 1. MySQL via Docker Compose
+
+A `docker-compose.yml` at the repo root spins up MySQL 8 with the Minutely
+schema and an application user pre-configured. From the repo root:
+
+```bash
+docker compose up -d           # builds infra/mysql/Dockerfile, starts the container
+docker compose ps              # should show "healthy" after ~10–20s
+docker compose logs -f mysql   # tail the log if anything looks off
+```
+
+The image source lives in [`infra/mysql/`](./infra/mysql/):
+- `Dockerfile` — extends `mysql:8.0`, copies in our config + init scripts
+- `my.cnf` — utf8mb4 everywhere, UTC time zone, strict SQL mode
+- `init/01-init.sql` — creates the `minutely` app user on first start
+
+Default credentials (override via env if needed):
+- Database: `minutely`
+- Root: `root` / `root` (use this for `DATABASE_URL` in `.env.local`)
+- App user: `minutely` / `minutely`
+- Port: `127.0.0.1:3306` (bound to loopback only)
+
+Data persists in the named volume `minutely-mysql-data`. `docker compose down`
+keeps your data; `docker compose down -v` wipes it.
+
+If you'd rather use a hosted MySQL (PlanetScale, Railway, AWS RDS, etc.),
+skip the compose step and just point `DATABASE_URL` at it — any
+`mysql://user:pass@host:port/db` works.
+
+### 2. Web app
 
 ```bash
 cd web
 cp .env.example .env.local
 # fill in every variable; the app throws loudly if any are missing
-npm install
+npm install --legacy-peer-deps
 npm run db:push        # apply Drizzle schema to MySQL
 npm run dev            # http://localhost:3000
 ```
 
-### 2. Diarization service
+### 3. Diarization service
 
 The full deploy story (Docker + GPU + Hugging Face terms) is in
 [`diarization/README.md`](./diarization/README.md). For sanity-checking the
