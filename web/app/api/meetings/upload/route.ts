@@ -12,11 +12,11 @@
  * { meetingId }.
  */
 import { NextResponse } from "next/server";
-import { eq } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { db, meetings, attendees } from "@/db";
 import { getCurrentUserId } from "@/lib/auth";
+import { env } from "@/lib/env";
 import { audioKey, uploadBuffer } from "@/lib/storage";
 
 export const runtime = "nodejs";
@@ -100,5 +100,24 @@ export async function POST(request: Request) {
     );
   }
 
+  // Fire-and-forget identify-speakers so the client can navigate to the
+  // meeting page immediately rather than waiting 30-90s on the recorder
+  // screen. The meeting page polls and renders the SpeakerNamingPopup
+  // inline the moment diarization finishes.
+  void triggerIdentifySpeakers(meetingId);
+
   return NextResponse.json({ meetingId });
+}
+
+async function triggerIdentifySpeakers(meetingId: string): Promise<void> {
+  try {
+    await fetch(`${env.appUrl}/api/meetings/${meetingId}/identify-speakers`, {
+      method: "POST",
+    });
+  } catch (err) {
+    console.error(
+      `[upload] failed to trigger identify-speakers for ${meetingId}:`,
+      err
+    );
+  }
 }

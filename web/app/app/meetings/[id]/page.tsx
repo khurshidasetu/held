@@ -11,8 +11,11 @@ import {
   attendees,
 } from "@/db";
 import { MeetingProcessingState } from "./MeetingProcessingState";
+import { MeetingIdentifyingState } from "./MeetingIdentifyingState";
+import { MeetingNamingState } from "./MeetingNamingState";
 import { ShareForm } from "./ShareForm";
 import { TranscriptDisclosure } from "./TranscriptDisclosure";
+import { getPresignedGetUrl } from "@/lib/storage";
 
 export const dynamic = "force-dynamic";
 
@@ -42,14 +45,46 @@ export default async function MeetingPage({ params }: PageProps) {
   }
 
   if (meeting.status === "awaiting_speaker_naming") {
+    // Two sub-states distinguished by whether identify-speakers has
+    // populated the speakers table yet:
+    //   * 0 rows → diarization still running in the background
+    //     (fired-and-forgot from /api/meetings/upload). Show the
+    //     centered "Identifying speakers…" spinner, which polls and
+    //     refreshes us back into this branch with rows present.
+    //   * >0 rows → diarization done, show the naming popup inline.
+    const speakerRows = await db
+      .select()
+      .from(speakers)
+      .where(eq(speakers.meetingId, id));
+
+    if (speakerRows.length === 0) {
+      return <MeetingIdentifyingState meetingId={id} />;
+    }
+
+    // Build presigned URLs for the sample MP3 clips so the popup's
+    // ▶ buttons work. Speakers table stores the storage key in
+    // sample_audio_url; we re-sign here on each render so the URLs
+    // are fresh.
+    const detected = await Promise.all(
+      speakerRows
+        .filter((s) => !s.isSilentAttendee)
+        .map(async (s) => ({
+          speakerLabel: s.speakerLabel,
+          sampleUrl: s.sampleAudioUrl
+            ? await getPresignedGetUrl(s.sampleAudioUrl, 60 * 60)
+            : null,
+        }))
+    );
+
     return (
       <div className="page-fade space-y-4">
-        <BackLink />
-        <h1 className="text-2xl font-semibold">{meeting.title}</h1>
-        <div className="rounded-lg border border-border bg-card p-6 text-sm text-muted-foreground">
-          Speaker naming hasn&rsquo;t been completed yet. Reopen the recorder
-          to finish naming.
+        <div className="text-center py-10">
+          <h1 className="text-xl font-semibold">{meeting.title}</h1>
+          <p className="text-sm text-muted-foreground mt-2">
+            Recording captured. Name the speakers below to continue.
+          </p>
         </div>
+        <MeetingNamingState meetingId={id} speakers={detected} />
       </div>
     );
   }

@@ -2,7 +2,6 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { SpeakerNamingPopup, type DetectedSpeaker } from "./SpeakerNamingPopup";
 
 type RecorderProps = {
   /** Optional. If omitted, the server auto-generates "Meeting on <date>". */
@@ -17,13 +16,12 @@ type RecorderProps = {
 // changes (bump to :v2 etc.).
 const CONSENT_ACK_KEY = "held:consent-ack:v1";
 
-type Phase =
-  | "idle"
-  | "recording"
-  | "uploading"
-  | "identifying"
-  | "naming"
-  | "saving";
+// The recorder used to host the Speaker Naming Popup directly and stayed
+// on screen until naming was done. We now navigate to the meeting page
+// the instant the upload returns, and the meeting page hosts the popup
+// inline (driven by polling on the meeting status). So the recorder
+// itself only sees three phases: idle → recording → handing off.
+type Phase = "idle" | "recording" | "uploading";
 
 // Order matters — first supported wins. iOS Safari only supports MP4.
 const PREFERRED_MIME_TYPES = [
@@ -75,9 +73,6 @@ export function Recorder({
   const [phase, setPhase] = useState<Phase>("idle");
   const [error, setError] = useState<string | null>(null);
   const [elapsed, setElapsed] = useState(0);
-
-  const [meetingId, setMeetingId] = useState<string | null>(null);
-  const [speakers, setSpeakers] = useState<DetectedSpeaker[]>([]);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
@@ -189,10 +184,15 @@ export function Recorder({
     await stopped;
 
     const blob = new Blob(chunksRef.current, { type: mimeRef.current });
-    await uploadAndIdentify(blob);
+    await uploadAndHandoff(blob);
   }
 
-  async function uploadAndIdentify(blob: Blob) {
+  // Upload the recording and immediately navigate to the meeting page.
+  // The meeting page polls and renders the Speaker Naming Popup inline
+  // the moment diarization completes (which we kicked off server-side
+  // as a fire-and-forget from the upload route). The user is no longer
+  // stuck on a full-screen "Identifying speakers..." spinner for 30-90s.
+  async function uploadAndHandoff(blob: Blob) {
     setPhase("uploading");
     setError(null);
 
@@ -222,21 +222,10 @@ export function Recorder({
       if (!uploadRes.ok) {
         throw new Error(await uploadRes.text());
       }
-      const { meetingId: id } = (await uploadRes.json()) as {
+      const { meetingId } = (await uploadRes.json()) as {
         meetingId: string;
       };
-      setMeetingId(id);
-
-      setPhase("identifying");
-      const idRes = await fetch(`/api/meetings/${id}/identify-speakers`, {
-        method: "POST",
-      });
-      if (!idRes.ok) {
-        throw new Error(await idRes.text());
-      }
-      const data = (await idRes.json()) as { speakers: DetectedSpeaker[] };
-      setSpeakers(data.speakers);
-      setPhase("naming");
+      router.push(`/app/meetings/${meetingId}`);
     } catch (err) {
       setError(
         err instanceof Error
@@ -244,31 +233,6 @@ export function Recorder({
           : "Something went wrong. Please try again."
       );
       setPhase("idle");
-    }
-  }
-
-  async function onSaveSpeakers(
-    detected: { speakerLabel: string; displayName: string | null }[],
-    silentAttendees: { displayName: string }[]
-  ) {
-    if (!meetingId) return;
-    setPhase("saving");
-    setError(null);
-    try {
-      const res = await fetch(`/api/meetings/${meetingId}/save-speakers`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ detected, silentAttendees }),
-      });
-      if (!res.ok) {
-        throw new Error(await res.text());
-      }
-      router.push(`/app/meetings/${meetingId}`);
-    } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Could not save speakers."
-      );
-      setPhase("naming");
     }
   }
 
@@ -334,34 +298,13 @@ export function Recorder({
           </>
         )}
 
-        {(phase === "uploading" || phase === "identifying") && (
-          <FullScreenLoading
-            text={
-              phase === "uploading"
-                ? "Uploading audio…"
-                : "Identifying speakers… this may take 30–60 seconds"
-            }
-          />
-        )}
-
-        {phase === "saving" && <FullScreenLoading text="Saving…" />}
+        {phase === "uploading" && <FullScreenLoading text="Uploading audio…" />}
       </div>
 
       {error && (
         <div className="rounded-md border border-red-500/30 bg-red-500/5 text-red-700 dark:text-red-300 px-4 py-3 text-sm">
           {error}
         </div>
-      )}
-
-      {phase === "naming" && (
-        <SpeakerNamingPopup
-          speakers={speakers}
-          onSubmit={onSaveSpeakers}
-          onSkip={() => onSaveSpeakers(
-            speakers.map((s) => ({ speakerLabel: s.speakerLabel, displayName: null })),
-            []
-          )}
-        />
       )}
     </div>
   );
