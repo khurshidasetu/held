@@ -17,7 +17,11 @@ Safari on iOS).
 > keep it as the source of truth so existing recordings survive. It's
 > exposed in compose as the externally-managed `held-mysql-data`. Every
 > other Docker resource (containers, images, HF/torch caches) is now `held-*`.
-> The repo folder is still `minutely/` on disk — feel free to rename.
+> The repo folder is still `minutely/` on disk. To rename it to `Held/`,
+> close any tool that has the directory as its working directory (your
+> editor, terminals, **and the Claude Code session** if you're running
+> one), then from the parent folder: `Rename-Item minutely Held`. Nothing
+> in the app reads the folder path, so the rename is purely cosmetic.
 
 ## Architecture
 
