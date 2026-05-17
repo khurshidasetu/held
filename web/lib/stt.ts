@@ -1,15 +1,20 @@
 /**
  * Speech-to-text orchestrator.
  *
- * Two providers:
- *   - "mock" (default for dev) — no API key needed. Probes the audio's true
- *     duration, then synthesizes a plausible meeting transcript distributed
- *     across that timeline. Lets the rest of the pipeline (merge + LLM
- *     summary) run end-to-end without a Cartesia account.
- *   - "cartesia" — real Ink-Whisper via WebSocket. Requires CARTESIA_API_KEY.
+ * Three providers:
+ *   - "mock"           — placeholder transcript, no API key needed. Probes
+ *                        the audio's real duration and synthesises a
+ *                        plausible filler script across that timeline.
+ *                        Useful for end-to-end demos without a Cartesia
+ *                        or OpenAI account.
+ *   - "cartesia"       — Cartesia Ink-Whisper via WebSocket. Fast streaming,
+ *                        but weak on non-English / code-switching.
+ *   - "openai-whisper" — OpenAI Whisper-1 over HTTP. Multilingual checkpoint,
+ *                        handles Bangla + English code-switching natively.
+ *                        Recommended for non-English meetings.
  *
- * Both return the same `Word[]` shape — `{ text, start, end }` per word — so
- * the merge step doesn't care which provider produced it.
+ * All three return the same `Word[]` shape — `{ text, start, end }` per
+ * word — so mergeTranscript downstream doesn't care which provider ran.
  */
 import fs from "node:fs/promises";
 import os from "node:os";
@@ -18,6 +23,7 @@ import { randomUUID } from "node:crypto";
 import { env } from "./env";
 import { toPcm16kMono } from "./audio";
 import { transcribePcm, type Word } from "./cartesia";
+import { transcribeWhisper } from "./openai-whisper";
 
 export type { Word } from "./cartesia";
 
@@ -26,8 +32,19 @@ export type { Word } from "./cartesia";
  * word-level transcription. Picks the provider from env.
  */
 export async function transcribeAudio(audioFilePath: string): Promise<Word[]> {
-  // Both paths need PCM-form audio: cartesia streams it; mock measures it.
-  // (PCM duration is exact: bytes / 2 / 16000 for 16-bit mono at 16 kHz.)
+  // OpenAI Whisper consumes the source file directly (it accepts webm /
+  // mp4 / m4a / wav natively); no PCM conversion needed. Short-circuit
+  // before the ffmpeg step so we don't waste a transcode.
+  if (env.stt.provider === "openai-whisper") {
+    return transcribeWhisper(
+      audioFilePath,
+      env.openai.language || undefined
+    );
+  }
+
+  // The remaining two providers BOTH want 16 kHz mono PCM —
+  // Cartesia streams it; mock measures the duration via byte count
+  // (bytes / 2 / 16000 = seconds for 16-bit mono @ 16 kHz).
   const pcmFile = path.join(
     os.tmpdir(),
     `held-pcm-${randomUUID()}.s16le`

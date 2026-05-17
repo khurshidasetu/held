@@ -33,11 +33,6 @@ export async function POST(request: Request) {
   const title = form.get("title");
   const attendeesRaw = form.get("attendees");
   const durationRaw = form.get("durationSeconds");
-  // "Just me" toggle from the recorder. The form sends "1" or "0".
-  // When true, identify-speakers bypasses pyannote and creates a single
-  // synthesized segment — fixes the over-segmentation pattern where
-  // pyannote splits one solo voice into 2-3 speakers.
-  const singleSpeaker = form.get("singleSpeaker") === "1";
 
   if (!(audio instanceof File) || audio.size === 0) {
     return NextResponse.json(
@@ -93,7 +88,6 @@ export async function POST(request: Request) {
     title: title.trim(),
     audioUrl: key,
     durationSeconds,
-    singleSpeaker,
     status: "awaiting_speaker_naming",
   });
 

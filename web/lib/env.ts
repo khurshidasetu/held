@@ -114,14 +114,18 @@ export const env = {
   },
 
   // Speech-to-text provider.
-  //   - "mock" (default) — placeholder transcript, no API key needed.
-  //   - "cartesia"        — real Ink-Whisper STT over WebSocket.
+  //   - "mock"           — placeholder transcript, no API key needed.
+  //   - "cartesia"       — Cartesia Ink-Whisper over WebSocket. Fast +
+  //                        cheap; weak on non-English / code-switching.
+  //   - "openai-whisper" — OpenAI Whisper-1 HTTP API. Multilingual, handles
+  //                        Bangla + English code-switching natively. Needs
+  //                        OPENAI_API_KEY. Recommended for non-English use.
   stt: {
-    get provider(): "mock" | "cartesia" {
+    get provider(): "mock" | "cartesia" | "openai-whisper" {
       const v = (process.env.STT_PROVIDER || "mock").toLowerCase();
-      if (v !== "mock" && v !== "cartesia") {
+      if (v !== "mock" && v !== "cartesia" && v !== "openai-whisper") {
         throw new Error(
-          `Invalid STT_PROVIDER: ${v} (expected "mock" or "cartesia")`
+          `Invalid STT_PROVIDER: ${v} (expected "mock", "cartesia", or "openai-whisper")`
         );
       }
       return v;
@@ -190,6 +194,25 @@ export const env = {
     },
     get model() {
       return process.env.ANTHROPIC_MODEL || "claude-sonnet-4-5";
+    },
+  },
+
+  openai: {
+    get apiKey() {
+      return required("OPENAI_API_KEY");
+    },
+    /** Whisper model slug. `whisper-1` is the only generally-available
+     * checkpoint as of writing; OpenAI may add newer variants — override
+     * via OPENAI_WHISPER_MODEL if so. */
+    get model() {
+      return process.env.OPENAI_WHISPER_MODEL || "whisper-1";
+    },
+    /** Optional BCP-47 hint passed to Whisper. Leave UNSET (empty) for
+     * code-switching meetings — Whisper does per-frame language ID and
+     * gets it right when you don't constrain it. Pin only when every
+     * meeting is the same language. */
+    get language() {
+      return process.env.OPENAI_WHISPER_LANGUAGE ?? "";
     },
   },
 

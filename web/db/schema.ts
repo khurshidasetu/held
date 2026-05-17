@@ -37,13 +37,6 @@ export const meetings = mysqlTable(
     title: varchar("title", { length: 500 }).notNull(),
     audioUrl: varchar("audio_url", { length: 1024 }),
     durationSeconds: int("duration_seconds"),
-    // Recording-time hint from the user: "just me, one speaker." When true,
-    // identify-speakers skips pyannote diarization entirely and synthesizes
-    // a single segment covering the full audio duration. This is the
-    // bulletproof fix for solo recordings — pyannote often over-splits one
-    // voice into 2-3 "speakers" on its default tuning, which we can't
-    // reliably correct after the fact.
-    singleSpeaker: boolean("single_speaker").notNull().default(false),
     status: mysqlEnum("status", [
       "pending",
       "awaiting_speaker_naming",

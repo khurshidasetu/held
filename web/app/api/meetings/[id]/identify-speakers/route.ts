@@ -89,46 +89,29 @@ export async function POST(_req: Request, ctx: Context) {
   const audioUrlForLocal = await getPresignedGetUrl(meeting.audioUrl, 30 * 60);
 
   let segments;
-  if (meeting.singleSpeaker) {
-    // "Just me" path — skip pyannote entirely. We trust the user's signal:
-    // there is exactly one speaker, and they own every word in the audio.
-    // Synthesize a single segment covering [0, duration]. duration is whatever
-    // the recorder reported; if it's missing we use a generous upper bound
-    // (3 h) that mergeTranscript will clamp via the actual word timestamps
-    // anyway — the segment just needs to be wider than the speech.
-    const dur =
-      typeof meeting.durationSeconds === "number" && meeting.durationSeconds > 0
-        ? meeting.durationSeconds
-        : 10800;
-    segments = [{ speaker: "SPEAKER_00", start: 0, end: dur }];
-    console.info(
-      `[identify-speakers] meeting ${id}: singleSpeaker=true, skipping pyannote`
+  try {
+    segments = await diarize(audioUrlForDiarization);
+  } catch (err) {
+    console.error(`[identify-speakers] diarization failed for ${id}:`, err);
+    await db
+      .update(meetings)
+      .set({
+        status: "failed",
+        errorMessage:
+          err instanceof Error ? err.message : "Diarization failed",
+      })
+      .where(eq(meetings.id, id));
+    return NextResponse.json(
+      { error: "Diarization failed" },
+      { status: 502 }
     );
-  } else {
-    try {
-      segments = await diarize(audioUrlForDiarization);
-    } catch (err) {
-      console.error(`[identify-speakers] diarization failed for ${id}:`, err);
-      await db
-        .update(meetings)
-        .set({
-          status: "failed",
-          errorMessage:
-            err instanceof Error ? err.message : "Diarization failed",
-        })
-        .where(eq(meetings.id, id));
-      return NextResponse.json(
-        { error: "Diarization failed" },
-        { status: 502 }
-      );
-    }
+  }
 
-    if (segments.length === 0) {
-      return NextResponse.json(
-        { error: "No speech detected in the recording" },
-        { status: 422 }
-      );
-    }
+  if (segments.length === 0) {
+    return NextResponse.json(
+      { error: "No speech detected in the recording" },
+      { status: 422 }
+    );
   }
 
   const { sampleKeysByLabel, speakerLabels } = await extractSpeakerSamples({
