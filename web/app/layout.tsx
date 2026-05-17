@@ -33,8 +33,10 @@ export const metadata: Metadata = {
     title: "Held",
     statusBarStyle: "default",
   },
+  // `app/icon.png` is auto-detected by Next.js and emits the
+  // <link rel="icon"> tag for us, so we only need to declare the
+  // Apple touch icon explicitly here.
   icons: {
-    icon: "/favicon.png",
     apple: "/icons/apple-touch-icon.png",
   },
 };
