@@ -15,7 +15,7 @@ import { MeetingIdentifyingState } from "./MeetingIdentifyingState";
 import { MeetingNamingState } from "./MeetingNamingState";
 import { ShareForm } from "./ShareForm";
 import { TranscriptDisclosure } from "./TranscriptDisclosure";
-import { getPresignedGetUrl } from "@/lib/storage";
+import { getPresignedGetUrlForBrowser } from "@/lib/storage";
 
 export const dynamic = "force-dynamic";
 
@@ -71,8 +71,11 @@ export default async function MeetingPage({ params }: PageProps) {
         .map(async (s) => ({
           speakerLabel: s.speakerLabel,
           sampleUrl: s.sampleAudioUrl
-            ? await getPresignedGetUrl(s.sampleAudioUrl, 60 * 60)
+            ? await getPresignedGetUrlForBrowser(s.sampleAudioUrl, 60 * 60)
             : null,
+          // Pre-fill any name we already inferred (e.g. via the
+          // identify-speakers self-intro extractor). User can edit or clear.
+          currentName: s.displayName ?? null,
         }))
     );
 

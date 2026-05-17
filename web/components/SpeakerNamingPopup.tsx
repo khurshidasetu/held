@@ -20,6 +20,12 @@ export type DetectedSpeaker = {
   speakerLabel: string;
   /** Presigned URL to the extracted MP3 clip. Null if extraction failed. */
   sampleUrl: string | null;
+  /**
+   * Existing displayName on the speaker row, if any. Used to pre-fill the
+   * name input (e.g. when the identify-speakers step has already extracted
+   * a self-introduced name like "Hi I'm Alex"). User can edit or clear.
+   */
+  currentName?: string | null;
 };
 
 type SilentEntry = {
@@ -37,7 +43,14 @@ type Props = {
 };
 
 export function SpeakerNamingPopup({ speakers, onSubmit, onSkip }: Props) {
-  const [names, setNames] = useState<Record<string, string>>({});
+  // Seed the input state from any name we already have on the speaker row
+  // (filled by the identify-speakers self-intro extractor). Falls back to ""
+  // for speakers we couldn't auto-detect.
+  const [names, setNames] = useState<Record<string, string>>(() =>
+    Object.fromEntries(
+      speakers.map((s) => [s.speakerLabel, s.currentName ?? ""])
+    )
+  );
   // Labels the user removed (diarization often clusters one person as two
   // speakers; this lets them prune those duplicates). Removed speakers
   // aren't sent on submit, so save-speakers will delete the row server-side

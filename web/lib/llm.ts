@@ -106,13 +106,33 @@ that were not actually discussed.`;
 const USER_PREFIX = "Here is the meeting transcript:\n\n";
 const USER_SUFFIX = "\n\nReturn the JSON object.";
 
+/**
+ * Generic single-turn completion. Picks the active provider, returns the
+ * raw text. Higher-level wrappers (summarizeTranscript, extractSpeakerNames)
+ * build their own prompts and parse the response.
+ */
+async function complete({
+  system,
+  user,
+  maxTokens,
+}: {
+  system: string;
+  user: string;
+  maxTokens: number;
+}): Promise<string> {
+  return env.llm.provider === "openrouter"
+    ? callOpenRouter({ system, user, maxTokens })
+    : callAnthropic({ system, user, maxTokens });
+}
+
 export async function summarizeTranscript(
   namedTranscript: string
 ): Promise<StructuredSummary> {
-  const rawText =
-    env.llm.provider === "openrouter"
-      ? await callOpenRouter(namedTranscript)
-      : await callAnthropic(namedTranscript);
+  const rawText = await complete({
+    system: SYSTEM_PROMPT,
+    user: `${USER_PREFIX}${namedTranscript}${USER_SUFFIX}`,
+    maxTokens: 1500,
+  });
 
   const stripped = stripCodeFences(rawText);
 
@@ -149,7 +169,15 @@ export async function summarizeTranscript(
 
 // ── Providers ────────────────────────────────────────────────────────────
 
-async function callOpenRouter(transcript: string): Promise<string> {
+async function callOpenRouter({
+  system,
+  user,
+  maxTokens,
+}: {
+  system: string;
+  user: string;
+  maxTokens: number;
+}): Promise<string> {
   const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
     headers: {
@@ -162,10 +190,10 @@ async function callOpenRouter(transcript: string): Promise<string> {
     },
     body: JSON.stringify({
       model: env.openrouter.model,
-      max_tokens: 1500,
+      max_tokens: maxTokens,
       messages: [
-        { role: "system", content: SYSTEM_PROMPT },
-        { role: "user", content: `${USER_PREFIX}${transcript}${USER_SUFFIX}` },
+        { role: "system", content: system },
+        { role: "user", content: user },
       ],
       // Ask for JSON when the underlying model supports it. Models that
       // don't honour this field ignore it; the prompt still demands JSON
@@ -200,15 +228,23 @@ function anthropicClient(): Anthropic {
   return (_anthropic ??= new Anthropic({ apiKey: env.anthropic.apiKey }));
 }
 
-async function callAnthropic(transcript: string): Promise<string> {
+async function callAnthropic({
+  system,
+  user,
+  maxTokens,
+}: {
+  system: string;
+  user: string;
+  maxTokens: number;
+}): Promise<string> {
   const response = await anthropicClient().messages.create({
     model: env.anthropic.model,
-    max_tokens: 1500,
-    system: SYSTEM_PROMPT,
+    max_tokens: maxTokens,
+    system,
     messages: [
       {
         role: "user",
-        content: `${USER_PREFIX}${transcript}${USER_SUFFIX}`,
+        content: user,
       },
     ],
   });
@@ -217,6 +253,79 @@ async function callAnthropic(transcript: string): Promise<string> {
     throw new Error("Claude returned no text content");
   }
   return textBlock.text;
+}
+
+// ── Speaker-name extraction (used pre-popup) ─────────────────────────────
+
+const NAME_EXTRACT_SCHEMA = z.object({
+  speakers: z
+    .array(
+      z.object({
+        label: z.string(),
+        name: z.string().min(1),
+      })
+    )
+    .default([]),
+});
+
+const NAME_EXTRACT_SYSTEM = `You are extracting speaker names from a meeting
+transcript. Each line is prefixed with a generic label like "Speaker 1",
+"Speaker 2", etc.
+
+Some speakers may introduce themselves by name. The introduction can be in
+ANY language — English ("Hi, I'm Alex", "Hello, this is Sarah"), Bangla
+("ami Rakib bolchi", "amar nam Tareq"), Bangla-English code-switch ("Hello
+everyone, ami Shahriar"), or anything else.
+
+Return a JSON object with one field, "speakers", an array of
+{ "label": "Speaker N", "name": "<the name>" } objects. The "label" MUST
+be the exact string used in the transcript (e.g. "Speaker 1"). The "name"
+should be just the person's first name unless they clearly state a fuller
+form.
+
+Rules:
+  - Only include speakers whose self-introduction is unambiguous.
+  - Never invent names. If you're guessing, leave them out.
+  - Empty "speakers" array is the correct answer when nobody self-introduces.
+
+Reply with ONLY a JSON object. No prose. No markdown code fences.`;
+
+/**
+ * Tiny LLM call to pull self-introduced names out of a short named
+ * transcript. Used in identify-speakers so the Speaker Naming Popup
+ * arrives pre-filled (the user sees "Alex" in the input rather than a
+ * blank field they have to fill themselves).
+ *
+ * Returns an empty array on any failure — failing to extract is fine
+ * (the popup still works, just without pre-fill). /process runs the
+ * full summarize call later and does its own extraction as a fallback.
+ */
+export async function extractSpeakerNames(
+  namedTranscript: string
+): Promise<Array<{ label: string; name: string }>> {
+  let raw: string;
+  try {
+    raw = await complete({
+      system: NAME_EXTRACT_SYSTEM,
+      user: `Transcript:\n\n${namedTranscript}\n\nReturn the JSON object.`,
+      maxTokens: 300,
+    });
+  } catch (err) {
+    console.warn("[extractSpeakerNames] LLM call failed:", err);
+    return [];
+  }
+
+  try {
+    const json = JSON.parse(stripCodeFences(raw));
+    const parsed = NAME_EXTRACT_SCHEMA.parse(json);
+    return parsed.speakers.map((s) => ({
+      label: s.label.trim(),
+      name: s.name.trim(),
+    }));
+  } catch (err) {
+    console.warn("[extractSpeakerNames] failed to parse LLM output:", err);
+    return [];
+  }
 }
 
 // Some prompts cause models to wrap JSON in ```json fences despite instructions.

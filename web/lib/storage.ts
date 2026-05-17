@@ -64,6 +64,27 @@ export async function getPresignedGetUrl(
 }
 
 /**
+ * Variant of getPresignedGetUrl meant for URLs that go straight into a
+ * browser <audio>/<img>/<a> tag. For the local driver this is a RELATIVE
+ * path, so the browser fetches it on whatever origin it loaded the page
+ * from (localhost, ngrok, custom domain — all work without per-deploy
+ * config). For S3 it falls through to the normal absolute presigned URL.
+ *
+ * Use this anywhere the URL is consumed client-side. Server-side fetches
+ * (extract-samples, /process) should keep using getPresignedGetUrl, which
+ * returns an absolute URL Node's fetch can consume.
+ */
+export async function getPresignedGetUrlForBrowser(
+  key: string,
+  expiresInSeconds = 3600
+): Promise<string> {
+  if (env.storage.driver === "local") {
+    return localSignedUrl(key, expiresInSeconds, ""); // empty base → relative
+  }
+  return s3SignedUrl(key, expiresInSeconds);
+}
+
+/**
  * Recursively delete everything under `prefix` (e.g. "meetings/<id>" or
  * "speaker-samples/<id>"). Best-effort: missing prefixes are not an error.
  */

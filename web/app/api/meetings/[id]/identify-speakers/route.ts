@@ -13,12 +13,17 @@
  * the save-speakers endpoint advances it.
  */
 import { NextResponse } from "next/server";
+import fs from "node:fs/promises";
 import { getCurrentUserId } from "@/lib/auth";
 import { eq, and } from "drizzle-orm";
 import { db, meetings, speakers } from "@/db";
 import { diarize } from "@/lib/diarization";
 import { extractSpeakerSamples } from "@/lib/extract-samples";
 import { getPresignedGetUrl, getInternalPresignedGetUrl } from "@/lib/storage";
+import { downloadToTemp } from "@/lib/audio";
+import { transcribeAudio } from "@/lib/stt";
+import { mergeTranscript, renderNamedTranscript } from "@/lib/merge-transcript";
+import { extractSpeakerNames } from "@/lib/llm";
 
 export const runtime = "nodejs";
 // Reads DB + calls external service, never prerender.
@@ -103,13 +108,29 @@ export async function POST(_req: Request, ctx: Context) {
   // Clear any prior speaker rows for this meeting (e.g. a retry), then insert.
   await db.delete(speakers).where(eq(speakers.meetingId, id));
 
+  // Optional pre-popup name extraction. We run a fast STT pass over the
+  // whole audio and ask the LLM to pull any clear self-introductions
+  // ("Hi I'm Alex", "ami Rakib bolchi") so the popup can render with the
+  // name inputs pre-filled. Best-effort: if STT or the LLM call fails for
+  // any reason, we still proceed with null displayNames and the popup
+  // shows blank inputs (the user can name speakers themselves; /process
+  // also re-runs name extraction as a fallback).
+  const inferredNames = await tryInferNames({
+    audioUrlForLocal,
+    segments,
+    speakerLabels,
+  });
+
+  // Clear any prior speaker rows for this meeting (e.g. a retry), then insert.
+  await db.delete(speakers).where(eq(speakers.meetingId, id));
+
   await db.insert(speakers).values(
     speakerLabels.map((label) => ({
       meetingId: id,
       speakerLabel: label,
       sampleAudioUrl: sampleUrlsByLabel.get(label) ?? null,
       isSilentAttendee: false,
-      displayName: null,
+      displayName: inferredNames.get(label) ?? null,
     }))
   );
 
@@ -124,6 +145,62 @@ export async function POST(_req: Request, ctx: Context) {
     speakers: speakerLabels.map((label) => ({
       speakerLabel: label,
       sampleUrl: sampleUrlsByLabel.get(label) ?? null,
+      inferredName: inferredNames.get(label) ?? null,
     })),
   });
+}
+
+/**
+ * Pre-popup name inference: transcribe the audio, merge with speaker
+ * segments, ask the LLM to extract self-introductions, map back from
+ * "Speaker N" positional labels to the pyannote labels we use as primary
+ * keys. Best-effort throughout — any failure returns an empty map and
+ * the rest of the flow proceeds.
+ */
+async function tryInferNames({
+  audioUrlForLocal,
+  segments,
+  speakerLabels,
+}: {
+  audioUrlForLocal: string;
+  segments: { speaker: string; start: number; end: number }[];
+  speakerLabels: string[];
+}): Promise<Map<string, string>> {
+  const result = new Map<string, string>();
+  let tmpDir: string | undefined;
+  try {
+    const dl = await downloadToTemp(audioUrlForLocal, "identify-audio");
+    tmpDir = dl.dir;
+    const words = await transcribeAudio(dl.filePath);
+    if (words.length === 0) return result;
+
+    const utterances = mergeTranscript(words, segments);
+    if (utterances.length === 0) return result;
+
+    // Render with positional "Speaker N" labels — same scheme the LLM
+    // prompt and the popup both use.
+    const positionalLabelFor = (pyannoteLabel: string) => {
+      const idx = speakerLabels.indexOf(pyannoteLabel);
+      return idx >= 0 ? `Speaker ${idx + 1}` : pyannoteLabel;
+    };
+    const named = renderNamedTranscript(utterances, positionalLabelFor);
+
+    const extracted = await extractSpeakerNames(named);
+    for (const { label, name } of extracted) {
+      // "Speaker N" → array index → pyannote label
+      const match = label.match(/^Speaker\s+(\d+)$/i);
+      if (!match) continue;
+      const idx = parseInt(match[1], 10) - 1;
+      const pyannoteLabel = speakerLabels[idx];
+      if (!pyannoteLabel) continue;
+      result.set(pyannoteLabel, name);
+    }
+  } catch (err) {
+    console.warn(`[identify-speakers] name inference skipped:`, err);
+  } finally {
+    if (tmpDir) {
+      await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
+    }
+  }
+  return result;
 }
