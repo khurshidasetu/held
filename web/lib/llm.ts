@@ -74,21 +74,43 @@ You will receive a transcript where each line is prefixed with the speaker's
 name, like "Sarah: I think we should ship Friday." Speakers may be labeled
 generically (e.g. "Speaker 1") if the user did not name them.
 
+LANGUAGE — IMPORTANT:
+  The transcript may be in any language, or mix multiple languages
+  mid-sentence (e.g. Bangla + English code-switching, Hindi + English,
+  etc.). Each language MUST appear in its native script — Bangla in
+  Bangla script, Hindi in Devanagari, etc.
+
+  Write every output field (summary, next_step, decisions, action_items,
+  open_questions) in THE SAME language(s) the meeting was conducted in.
+  If the meeting was in Bangla, write the summary in Bangla. If it mixed
+  Bangla and English, mix them naturally the same way the speakers did.
+  Do NOT translate the meeting into English unless the meeting itself
+  was in English. Do NOT transliterate (no "amra" — write আমরা).
+
+  The only exception: JSON keys ("summary", "next_step", "decisions",
+  "text", "owner", "due_date", "rationale", "label", "name") stay in
+  English exactly as specified below — they're the schema, not content.
+
 Produce a JSON object with exactly these top-level fields:
   - "summary": 2-4 sentences of context, in the past tense. Used for the
-    email body, not the Result Card hero. Keep it factual.
+    email body, not the Result Card hero. Keep it factual. In the
+    meeting's language.
   - "next_step": ONE short sentence — the single most important next action
     coming out of this meeting. Null only if the meeting truly produced
-    nothing actionable.
+    nothing actionable. In the meeting's language.
   - "decisions": array of { text, rationale }. rationale is one sentence or
-    null. Include only decisions that were actually made.
+    null. Include only decisions that were actually made. Both fields in
+    the meeting's language.
   - "action_items": array of { text, owner, due_date }.
     * owner: the person's name if you can attribute it from the transcript
       (either someone volunteered with "I'll" / "I can take that" or another
       speaker assigned it). If the speaker is labeled "Speaker N" and you
       cannot infer a real name, set owner to null. Never invent names.
     * due_date: free-text like "Friday", "EOD", "next sprint", or null.
+      Use the speakers' wording — if they said "শুক্রবার", keep it as
+      "শুক্রবার", don't translate to "Friday".
   - "open_questions": array of { text }. Things raised but not resolved.
+    In the meeting's language.
   - "speaker_names": array of { label, name }. For any speaker whose line
     prefix is a generic placeholder ("Speaker 1", "Speaker 2", etc.) AND who
     introduces themselves in the transcript ("Hi I'm Alex", "Hello, my name
@@ -96,8 +118,10 @@ Produce a JSON object with exactly these top-level fields:
     language, including Bangla/English code-switching), output the mapping
     so the app can replace the generic label with their real name. Use the
     EXACT label that appears in the transcript prefix as the "label" value.
-    Only include speakers whose self-intro is unambiguous; never invent
-    names. Empty array if nobody self-introduces.
+    The "name" should use the script the speaker actually used (Bangla
+    name in Bangla, Latin in Latin). Only include speakers whose self-intro
+    is unambiguous; never invent names. Empty array if nobody
+    self-introduces.
 
 Reply with ONLY a JSON object. No prose before or after, no markdown code
 fences. Use double quotes. Do not invent decisions, actions, or questions

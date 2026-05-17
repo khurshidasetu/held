@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Open_Sans, Geist_Mono } from "next/font/google";
+import { Open_Sans, Noto_Sans_Bengali, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
 // Open Sans — primary face for the whole app. Loaded via next/font so
@@ -7,9 +7,24 @@ import "./globals.css";
 // no FOIT). We pull the full weight range as a variable font; italics
 // are bundled in the same variable so emphasised text works without a
 // second download.
+//
+// Note: Open Sans does NOT include Bengali glyphs. Bangla characters in
+// transcripts / summaries fall through to the Noto Sans Bengali stack
+// below — wired via the body font stack in globals.css, so Latin chars
+// get Open Sans and Bangla chars get Noto Sans Bengali per-character.
 const openSans = Open_Sans({
   variable: "--font-sans",
   subsets: ["latin"],
+  display: "swap",
+});
+
+// Noto Sans Bengali — fallback for any Bangla glyphs that Open Sans
+// can't render. Google's "Noto" family is purpose-built for missing-
+// script coverage ("No Tofu"). When the browser hits a Unicode point
+// Open Sans doesn't ship, it walks the body font stack and lands here.
+const notoBengali = Noto_Sans_Bengali({
+  variable: "--font-bengali",
+  subsets: ["bengali"],
   display: "swap",
 });
 
@@ -65,7 +80,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${openSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${openSans.variable} ${notoBengali.variable} ${geistMono.variable} h-full antialiased`}
       suppressHydrationWarning
     >
       <head>

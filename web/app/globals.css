@@ -92,11 +92,15 @@ html {
 }
 
 body {
-  /* Open Sans first; system sans-serif fallbacks cover the brief flash
-     before the variable font loads (display: swap above keeps text
-     visible during that window). */
+  /* Per-character font fallback chain. The browser walks this list for
+     each individual Unicode point — Latin glyphs land in Open Sans;
+     Bangla glyphs (which Open Sans doesn't ship) fall through to Noto
+     Sans Bengali; anything else hits the system sans-serif fallback.
+     This is the standard CSS pattern for transcripts that mix scripts
+     mid-sentence (Bangla + English code-switching, Hindi + English, etc.). */
   font-family:
     var(--font-sans),
+    var(--font-bengali),
     system-ui,
     -apple-system,
     BlinkMacSystemFont,
