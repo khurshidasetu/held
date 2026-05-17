@@ -290,9 +290,14 @@ export default async function MeetingPage({ params }: PageProps) {
           contained instead of pushing the share form below the fold. */}
       <TranscriptDisclosure>
         {summary && (
-          <p className="text-sm text-muted-foreground italic mb-3">
-            {summary.summary}
-          </p>
+          <div className="mb-4 rounded-lg border border-border bg-muted/5 px-4 py-3">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground mb-1.5">
+              Summary
+            </div>
+            <p className="text-sm text-foreground/80 italic leading-relaxed">
+              {summary.summary}
+            </p>
+          </div>
         )}
         {/* Post-completion speaker manager — only renders when there's
             more than one speaker, so single-speaker meetings stay clean.
