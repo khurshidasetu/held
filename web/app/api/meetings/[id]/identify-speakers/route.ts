@@ -29,6 +29,7 @@ import { getCurrentUserId } from "@/lib/auth";
 import { eq, and } from "drizzle-orm";
 import { db, meetings, speakers } from "@/db";
 import { diarize } from "@/lib/diarization";
+import { cleanSegments } from "@/lib/merge-transcript";
 import { extractSpeakerSamples } from "@/lib/extract-samples";
 import {
   getPresignedGetUrl,
@@ -113,6 +114,62 @@ export async function POST(_req: Request, ctx: Context) {
       { status: 422 }
     );
   }
+
+  // ── Clean + prune ghost speakers BEFORE the popup ───────────────────────
+  //
+  // pyannote routinely over-splits a single voice into multiple "speakers"
+  // — especially on solo or short recordings — because its embedding
+  // clustering can flip on tiny shifts in tone / distance to mic /
+  // background noise. The user sees 5 rows in the naming popup when they
+  // only spoke once. The earlier /process-time ghost-prune ran AFTER the
+  // popup had already shown the user those rows, which is too late.
+  //
+  // Two passes here:
+  //   1. cleanSegments — drop sub-100ms blips, merge adjacent same-speaker
+  //      segments with gap <= 500ms (existing helper used by mergeTranscript).
+  //   2. Drop any speaker whose TOTAL post-clean speech is under
+  //      MIN_TOTAL_SPEECH_SECONDS. That threshold (1.0 s) is comfortably
+  //      below any real participant's contribution and reliably catches
+  //      noise/phantom clusters that pyannote keeps spitting out.
+  const cleaned = cleanSegments(segments);
+  const MIN_TOTAL_SPEECH_SECONDS = 1.0;
+  const totalsBySpeaker = new Map<string, number>();
+  for (const s of cleaned) {
+    totalsBySpeaker.set(
+      s.speaker,
+      (totalsBySpeaker.get(s.speaker) ?? 0) + (s.end - s.start)
+    );
+  }
+  const keptSpeakers = new Set(
+    Array.from(totalsBySpeaker.entries())
+      .filter(([, total]) => total >= MIN_TOTAL_SPEECH_SECONDS)
+      .map(([label]) => label)
+  );
+  let usableSegments = cleaned.filter((s) => keptSpeakers.has(s.speaker));
+
+  // Edge case: every speaker fell below the threshold. Don't fail the
+  // meeting — fall back to the cleaned set so the user still gets *something*
+  // (the trash button in the popup will deal with the rest).
+  if (usableSegments.length === 0) {
+    console.warn(
+      `[identify-speakers] all speakers below ${MIN_TOTAL_SPEECH_SECONDS}s threshold for ${id}; falling back to cleaned segments`
+    );
+    usableSegments = cleaned;
+  }
+
+  if (keptSpeakers.size < totalsBySpeaker.size) {
+    console.info(
+      `[identify-speakers] meeting ${id}: pruned ${
+        totalsBySpeaker.size - keptSpeakers.size
+      } ghost speaker(s) (total speech < ${MIN_TOTAL_SPEECH_SECONDS}s)`
+    );
+  }
+
+  // Use the pruned + cleaned segments for everything downstream — sample
+  // extraction, the speaker rows we insert, and the diarizationSegments
+  // we cache for /process. mergeTranscript will run cleanSegments again
+  // later (idempotent) but starts from a smaller, sharper input.
+  segments = usableSegments;
 
   const { sampleKeysByLabel, speakerLabels } = await extractSpeakerSamples({
     meetingId: id,

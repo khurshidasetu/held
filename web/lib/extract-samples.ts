@@ -105,20 +105,59 @@ export async function extractSpeakerSamples({
   return { sampleKeysByLabel, speakerLabels };
 }
 
+/**
+ * Pick a {start,end} window for the speaker's sample clip.
+ *
+ * Why the merge step matters: pyannote routinely splits a continuous
+ * speaker turn into many tiny adjacent segments (sub-second each) when
+ * the speaker pauses to breathe, modulates volume, or moves closer/
+ * further from the mic. The old behavior — picking the first single
+ * segment >= 2s, falling back to the longest — would happily pick a
+ * 0.5s slice when in reality the speaker had been talking for 30
+ * seconds, just chopped up. Result: a play button that audibly clicks
+ * for one syllable and stops.
+ *
+ * Fix: collapse the speaker's segments into MERGED RUNS first.
+ * Adjacent segments with a gap of <= MERGE_GAP_SECONDS (= 1.5 s) are
+ * fused into one continuous block, even though pyannote handed them
+ * back separately. Then we pick from the merged blocks. This routinely
+ * turns "10 × ~0.4s segments" into one 4-5 s sample window — exactly
+ * what the popup play button needs.
+ */
+const MERGE_GAP_SECONDS = 1.5;
+
 function pickSample(
   speakerSegments: DiarizationSegment[]
-): DiarizationSegment | null {
+): { start: number; end: number } | null {
   if (speakerSegments.length === 0) return null;
 
-  const firstClear = speakerSegments.find(
-    (s) => s.end - s.start >= MIN_SEGMENT_SECONDS
-  );
+  // Sort + merge adjacent runs for this speaker. We keep the original
+  // segments untouched; the merged shape is a local optimisation just
+  // for choosing the sample window.
+  const sorted = [...speakerSegments].sort((a, b) => a.start - b.start);
+  const merged: { start: number; end: number }[] = [];
+  for (const s of sorted) {
+    const prev = merged[merged.length - 1];
+    if (prev && s.start - prev.end <= MERGE_GAP_SECONDS) {
+      prev.end = Math.max(prev.end, s.end);
+    } else {
+      merged.push({ start: s.start, end: s.end });
+    }
+  }
+
+  // First merged run >= MIN_SEGMENT_SECONDS wins — that's the earliest
+  // chunk of continuous speech long enough to be a recognisable
+  // sample.
+  const firstClear = merged.find((r) => r.end - r.start >= MIN_SEGMENT_SECONDS);
   if (firstClear) return firstClear;
 
-  // Fall back to the longest segment, even if under 2s.
-  let longest = speakerSegments[0];
-  for (const s of speakerSegments) {
-    if (s.end - s.start > longest.end - longest.start) longest = s;
+  // No merged run meets the 2 s floor. Pick the longest one we have;
+  // mergeAdjacent already gave us the best possible contiguous block,
+  // so this is genuinely the most-audio-we-can-extract for this
+  // speaker.
+  let longest = merged[0];
+  for (const r of merged) {
+    if (r.end - r.start > longest.end - longest.start) longest = r;
   }
   return longest;
 }
