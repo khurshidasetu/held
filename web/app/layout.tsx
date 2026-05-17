@@ -33,10 +33,13 @@ export const metadata: Metadata = {
     title: "Held",
     statusBarStyle: "default",
   },
-  // `app/icon.png` is auto-detected by Next.js and emits the
-  // <link rel="icon"> tag for us, so we only need to declare the
-  // Apple touch icon explicitly here.
+  // We have the Held favicon at app/icon.png. Next.js 16 + Turbopack
+  // didn't reliably emit the auto-generated <link rel="icon"> tag for
+  // the file-convention version, so we declare it explicitly here.
+  // The file is still served by the app/ route handler — the metadata
+  // config below just guarantees the link tag lands in the head.
   icons: {
+    icon: [{ url: "/icon.png", type: "image/png" }],
     apple: "/icons/apple-touch-icon.png",
   },
 };
