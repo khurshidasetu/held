@@ -76,16 +76,23 @@ export default async function MeetingPage({ params }: PageProps) {
         }))
     );
 
+    // IMPORTANT: don't put MeetingNamingState inside the page-fade wrapper.
+    // page-fade animates `transform`, which makes that <div> the containing
+    // block for the popup's `position: fixed`, clipping the modal header
+    // above the wrapper's edge. Render the popup as a sibling so its
+    // `inset-0` is measured against the viewport.
     return (
-      <div className="page-fade space-y-4">
-        <div className="text-center py-10">
-          <h1 className="text-xl font-semibold">{meeting.title}</h1>
-          <p className="text-sm text-muted-foreground mt-2">
-            Recording captured. Name the speakers below to continue.
-          </p>
+      <>
+        <div className="page-fade space-y-4">
+          <div className="text-center py-10">
+            <h1 className="text-xl font-semibold">{meeting.title}</h1>
+            <p className="text-sm text-muted-foreground mt-2">
+              Recording captured. Name the speakers below to continue.
+            </p>
+          </div>
         </div>
         <MeetingNamingState meetingId={id} speakers={detected} />
-      </div>
+      </>
     );
   }
 
