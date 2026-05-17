@@ -95,14 +95,20 @@ services:
       start_period: 30s
 
 volumes:
-  # NOTE: We point `held-mysql-data` at the existing on-disk volume from
-  # the Minutely-era setup (`minutely-mysql-data`) so the 13 dev meetings
-  # survive the rename. If you're setting this up fresh and don't have
-  # that volume, change `external: true` to a plain managed volume.
+  # All three volumes still live on disk under their original `minutely-*`
+  # names. We can't rename a Docker volume in place (would require
+  # clone+delete with a ~1 GB pyannote weights re-download), so compose
+  # references them as `external: true` and we use `held-*` only as the
+  # service-local alias. Fresh-install users (no existing minutely-*
+  # volumes) should drop `name:` + `external: true` and let compose
+  # create plain `held-*` volumes — `docker compose down -v` will then
+  # do the right thing on cleanup.
   held-mysql-data:
     name: minutely-mysql-data
     external: true
   held-hf-cache:
-    name: held-hf-cache
+    name: minutely-hf-cache
+    external: true
   held-torch-cache:
-    name: held-torch-cache
+    name: minutely-torch-cache
+    external: true
