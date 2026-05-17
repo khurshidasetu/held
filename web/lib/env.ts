@@ -93,8 +93,19 @@ export const env = {
     get region() {
       return required("AWS_REGION");
     },
+    /**
+     * Bucket name. Accepts either AWS_S3_BUCKET (our historical name) or
+     * AWS_BUCKET_NAME (common alternative used by some AWS SDKs / template
+     * envs). First defined wins.
+     */
     get bucket() {
-      return required("AWS_S3_BUCKET");
+      const v = process.env.AWS_S3_BUCKET || process.env.AWS_BUCKET_NAME;
+      if (!v) {
+        throw new Error(
+          "Missing required env var: AWS_S3_BUCKET (or AWS_BUCKET_NAME)"
+        );
+      }
+      return v;
     },
     get accessKeyId() {
       return required("AWS_ACCESS_KEY_ID");
