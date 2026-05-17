@@ -16,6 +16,12 @@ type RecorderProps = {
 // changes (bump to :v2 etc.).
 const CONSENT_ACK_KEY = "held:consent-ack:v1";
 
+// Sticky "Just me (one speaker)" preference. The user typically records
+// the same way over and over (solo or with the same team) — persisting
+// the toggle saves them re-picking it every session. Set to "1" when
+// the user wants to bypass diarization.
+const SOLO_PREF_KEY = "held:solo-recording:v1";
+
 // The recorder used to host the Speaker Naming Popup directly and stayed
 // on screen until naming was done. We now navigate to the meeting page
 // the instant the upload returns, and the meeting page hosts the popup
@@ -67,6 +73,29 @@ export function Recorder({
       } catch {
         // ignore
       }
+    }
+  }
+
+  // "Just me" toggle — sticky across sessions. When checked, the upload
+  // sends singleSpeaker=1, which makes identify-speakers skip pyannote
+  // and create one speaker covering the whole audio. Default off so
+  // multi-person meetings continue to work as before.
+  const [singleSpeaker, setSingleSpeakerState] = useState(false);
+  useEffect(() => {
+    try {
+      if (window.localStorage.getItem(SOLO_PREF_KEY) === "1") {
+        setSingleSpeakerState(true);
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
+  function setSingleSpeaker(v: boolean) {
+    setSingleSpeakerState(v);
+    try {
+      window.localStorage.setItem(SOLO_PREF_KEY, v ? "1" : "0");
+    } catch {
+      // ignore
     }
   }
 
@@ -214,6 +243,10 @@ export function Recorder({
       fd.append("title", titleToSend);
       fd.append("attendees", JSON.stringify(attendeeEmails));
       fd.append("durationSeconds", String(elapsed));
+      // Recording-time hint: when set, identify-speakers will skip
+      // pyannote and synthesize a single speaker segment covering the
+      // whole audio. See upload route + identify-speakers/route.ts.
+      fd.append("singleSpeaker", singleSpeaker ? "1" : "0");
 
       const uploadRes = await fetch("/api/meetings/upload", {
         method: "POST",
@@ -244,6 +277,33 @@ export function Recorder({
           onChange={acknowledgeConsent}
           disabled={phase !== "idle"}
         />
+      )}
+
+      {/* Recording-time hint: "Just me" toggle. Hidden once recording starts
+          so the button doesn't shift around. Persisted across sessions via
+          localStorage. */}
+      {phase === "idle" && (
+        <label
+          htmlFor="held-single-speaker"
+          className="flex items-center justify-between gap-3 rounded-lg border border-border bg-card px-4 py-2.5 cursor-pointer hover:bg-foreground/[0.02]"
+        >
+          <div className="text-sm">
+            <span className="font-medium text-foreground">
+              Just me (one speaker)
+            </span>
+            <span className="block text-xs text-muted-foreground mt-0.5">
+              Skips speaker detection — faster, and avoids splitting a solo
+              voice into multiple speakers.
+            </span>
+          </div>
+          <input
+            id="held-single-speaker"
+            type="checkbox"
+            checked={singleSpeaker}
+            onChange={(e) => setSingleSpeaker(e.target.checked)}
+            className="shrink-0 h-5 w-5 rounded border-border accent-brand"
+          />
+        </label>
       )}
 
       <div className="rounded-lg border border-border bg-card p-6 flex flex-col items-center gap-5">
