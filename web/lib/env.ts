@@ -117,15 +117,19 @@ export const env = {
   //   - "mock"           — placeholder transcript, no API key needed.
   //   - "cartesia"       — Cartesia Ink-Whisper over WebSocket. Fast +
   //                        cheap; weak on non-English / code-switching.
-  //   - "openai-whisper" — OpenAI Whisper-1 HTTP API. Multilingual, handles
-  //                        Bangla + English code-switching natively. Needs
-  //                        OPENAI_API_KEY. Recommended for non-English use.
+  //   - "gemini-audio"   — Gemini 2.5 Flash (Lite) via OpenRouter. Sends
+  //                        the recording as a multimodal audio input and
+  //                        asks the model to return segment-level
+  //                        transcription with timestamps. Reuses
+  //                        OPENROUTER_API_KEY — no separate STT key
+  //                        required. Recommended for non-English /
+  //                        code-switching meetings (Bangla + English).
   stt: {
-    get provider(): "mock" | "cartesia" | "openai-whisper" {
+    get provider(): "mock" | "cartesia" | "gemini-audio" {
       const v = (process.env.STT_PROVIDER || "mock").toLowerCase();
-      if (v !== "mock" && v !== "cartesia" && v !== "openai-whisper") {
+      if (v !== "mock" && v !== "cartesia" && v !== "gemini-audio") {
         throw new Error(
-          `Invalid STT_PROVIDER: ${v} (expected "mock", "cartesia", or "openai-whisper")`
+          `Invalid STT_PROVIDER: ${v} (expected "mock", "cartesia", or "gemini-audio")`
         );
       }
       return v;
@@ -197,22 +201,15 @@ export const env = {
     },
   },
 
-  openai: {
-    get apiKey() {
-      return required("OPENAI_API_KEY");
-    },
-    /** Whisper model slug. `whisper-1` is the only generally-available
-     * checkpoint as of writing; OpenAI may add newer variants — override
-     * via OPENAI_WHISPER_MODEL if so. */
+  // STT-specific Gemini settings. Auth + base URL come from
+  // env.openrouter.*; this group just lets us pick a different Gemini
+  // variant for audio than the one used for summarisation if needed
+  // (Flash Lite handles audio in our testing but if a future version
+  // strips multimodal from Lite, override STT_GEMINI_MODEL to a full
+  // Flash without touching the summary path).
+  geminiAudio: {
     get model() {
-      return process.env.OPENAI_WHISPER_MODEL || "whisper-1";
-    },
-    /** Optional BCP-47 hint passed to Whisper. Leave UNSET (empty) for
-     * code-switching meetings — Whisper does per-frame language ID and
-     * gets it right when you don't constrain it. Pin only when every
-     * meeting is the same language. */
-    get language() {
-      return process.env.OPENAI_WHISPER_LANGUAGE ?? "";
+      return process.env.STT_GEMINI_MODEL || process.env.OPENROUTER_MODEL || "google/gemini-2.5-flash-lite";
     },
   },
 

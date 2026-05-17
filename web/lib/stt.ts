@@ -2,16 +2,20 @@
  * Speech-to-text orchestrator.
  *
  * Three providers:
- *   - "mock"           — placeholder transcript, no API key needed. Probes
- *                        the audio's real duration and synthesises a
- *                        plausible filler script across that timeline.
- *                        Useful for end-to-end demos without a Cartesia
- *                        or OpenAI account.
- *   - "cartesia"       — Cartesia Ink-Whisper via WebSocket. Fast streaming,
- *                        but weak on non-English / code-switching.
- *   - "openai-whisper" — OpenAI Whisper-1 over HTTP. Multilingual checkpoint,
- *                        handles Bangla + English code-switching natively.
- *                        Recommended for non-English meetings.
+ *   - "mock"         — placeholder transcript, no API key needed. Probes
+ *                      the audio's real duration and synthesises a
+ *                      plausible filler script across that timeline.
+ *                      Useful for end-to-end demos without a real STT
+ *                      account.
+ *   - "cartesia"     — Cartesia Ink-Whisper via WebSocket. Fast streaming,
+ *                      but its auto-language-detect routes non-English
+ *                      speech through the English lexicon (Bangla speech
+ *                      comes out as nonsense English words).
+ *   - "gemini-audio" — Gemini 2.5 Flash (Lite) via OpenRouter. Multimodal
+ *                      audio input, handles Bangla + English
+ *                      code-switching natively. Reuses the team's
+ *                      OPENROUTER_API_KEY — no new account/key required.
+ *                      Recommended for non-English deployments.
  *
  * All three return the same `Word[]` shape — `{ text, start, end }` per
  * word — so mergeTranscript downstream doesn't care which provider ran.
@@ -23,7 +27,7 @@ import { randomUUID } from "node:crypto";
 import { env } from "./env";
 import { toPcm16kMono } from "./audio";
 import { transcribePcm, type Word } from "./cartesia";
-import { transcribeWhisper } from "./openai-whisper";
+import { transcribeGeminiAudio } from "./gemini-audio";
 
 export type { Word } from "./cartesia";
 
@@ -32,14 +36,11 @@ export type { Word } from "./cartesia";
  * word-level transcription. Picks the provider from env.
  */
 export async function transcribeAudio(audioFilePath: string): Promise<Word[]> {
-  // OpenAI Whisper consumes the source file directly (it accepts webm /
-  // mp4 / m4a / wav natively); no PCM conversion needed. Short-circuit
-  // before the ffmpeg step so we don't waste a transcode.
-  if (env.stt.provider === "openai-whisper") {
-    return transcribeWhisper(
-      audioFilePath,
-      env.openai.language || undefined
-    );
+  // Gemini-via-OpenRouter consumes the source webm/mp4 directly (no
+  // transcoding); short-circuit before the ffmpeg PCM step so we don't
+  // burn a transcode we won't use.
+  if (env.stt.provider === "gemini-audio") {
+    return transcribeGeminiAudio(audioFilePath);
   }
 
   // The remaining two providers BOTH want 16 kHz mono PCM —
