@@ -1,13 +1,24 @@
 /**
  * POST /api/meetings/[id]/identify-speakers
  *
- * Called by the recorder after upload finishes. Runs diarization on the
- * uploaded audio, extracts a short sample clip per detected speaker, and
- * returns the list to the client for the Speaker Naming Popup.
+ * Called fire-and-forget by /api/meetings/upload after the audio lands. The
+ * route runs the SYNCHRONOUS critical path needed for the popup to appear:
  *
- * Side effects:
- *   - Writes speaker rows to the DB (so save-speakers can reference them)
- *   - Uploads sample clips to S3 under speaker-samples/{meeting_id}/
+ *   1. Diarize (slowest step — pyannote on CPU dominates this route's time)
+ *   2. Extract a short MP3 sample per detected speaker
+ *   3. Insert speaker rows with displayName: null
+ *   4. Cache the raw diarization segments on the meeting row
+ *
+ * As soon as those four steps are done, the meeting page poll picks up
+ * speakers.count > 0 and swaps the "Identifying speakers..." spinner for
+ * the SpeakerNamingPopup.
+ *
+ * Name inference (download audio → STT → LLM → patch displayName) runs
+ * fire-and-forget in the background. Self-introduced names trickle into
+ * the DB whenever it finishes. The popup uses local state once mounted,
+ * so any names that arrive after the popup is open won't auto-fill — but
+ * users can still type names manually, and /process re-runs name
+ * extraction during summarization as the authoritative fallback.
  *
  * The meeting stays in status 'awaiting_speaker_naming' throughout — only
  * the save-speakers endpoint advances it.
@@ -19,7 +30,11 @@ import { eq, and } from "drizzle-orm";
 import { db, meetings, speakers } from "@/db";
 import { diarize } from "@/lib/diarization";
 import { extractSpeakerSamples } from "@/lib/extract-samples";
-import { getPresignedGetUrl, getInternalPresignedGetUrl } from "@/lib/storage";
+import {
+  getPresignedGetUrl,
+  getPresignedGetUrlForBrowser,
+  getInternalPresignedGetUrl,
+} from "@/lib/storage";
 import { downloadToTemp } from "@/lib/audio";
 import { transcribeAudio } from "@/lib/stt";
 import { mergeTranscript, renderNamedTranscript } from "@/lib/merge-transcript";
@@ -64,9 +79,9 @@ export async function POST(_req: Request, ctx: Context) {
   //   - audioUrlForDiarization: handed to the diarization service. When that
   //     service runs in Docker, the URL uses host.docker.internal so the
   //     container can reach our dev server on the host.
-  //   - audioUrlForLocal:       used by extractSpeakerSamples, which runs in
-  //     *this* process on the host — plain localhost is fine and avoids a
-  //     pointless trip through Docker's networking.
+  //   - audioUrlForLocal:       used by extractSpeakerSamples (this process)
+  //     and the background name-inference task. Plain localhost is fine
+  //     and avoids a pointless trip through Docker's networking.
   const audioUrlForDiarization = await getInternalPresignedGetUrl(
     meeting.audioUrl,
     30 * 60
@@ -99,86 +114,98 @@ export async function POST(_req: Request, ctx: Context) {
     );
   }
 
-  const { sampleUrlsByLabel, speakerLabels } = await extractSpeakerSamples({
+  const { sampleKeysByLabel, speakerLabels } = await extractSpeakerSamples({
     meetingId: id,
     audioSourceUrl: audioUrlForLocal,
     segments,
   });
 
-  // Clear any prior speaker rows for this meeting (e.g. a retry), then insert.
-  await db.delete(speakers).where(eq(speakers.meetingId, id));
-
-  // Optional pre-popup name extraction. We run a fast STT pass over the
-  // whole audio and ask the LLM to pull any clear self-introductions
-  // ("Hi I'm Alex", "ami Rakib bolchi") so the popup can render with the
-  // name inputs pre-filled. Best-effort: if STT or the LLM call fails for
-  // any reason, we still proceed with null displayNames and the popup
-  // shows blank inputs (the user can name speakers themselves; /process
-  // also re-runs name extraction as a fallback).
-  const inferredNames = await tryInferNames({
-    audioUrlForLocal,
-    segments,
-    speakerLabels,
-  });
-
-  // Clear any prior speaker rows for this meeting (e.g. a retry), then insert.
+  // Single clear+insert. The previous version deleted twice — once before
+  // name inference, once after — which was a leftover from when inference
+  // was synchronous. With inference deferred we only need the one wipe.
   await db.delete(speakers).where(eq(speakers.meetingId, id));
 
   await db.insert(speakers).values(
     speakerLabels.map((label) => ({
       meetingId: id,
       speakerLabel: label,
-      sampleAudioUrl: sampleUrlsByLabel.get(label) ?? null,
+      // Store the storage KEY, not a signed URL. The meeting page re-signs
+      // per render so the URL is always fresh + origin-relative.
+      sampleAudioUrl: sampleKeysByLabel.get(label) ?? null,
       isSilentAttendee: false,
-      displayName: inferredNames.get(label) ?? null,
+      // null on purpose — name inference runs in the background below and
+      // patches this column when (and if) self-intros are detected.
+      displayName: null,
     }))
   );
 
-  // Cache the raw diarization output so the process route can merge it with
-  // the transcript without re-running diarization.
+  // Cache the raw diarization output so /process can merge it with the
+  // transcript without re-running diarization.
   await db
     .update(meetings)
     .set({ diarizationSegments: segments })
     .where(eq(meetings.id, id));
 
-  return NextResponse.json({
-    speakers: speakerLabels.map((label) => ({
-      speakerLabel: label,
-      sampleUrl: sampleUrlsByLabel.get(label) ?? null,
-      inferredName: inferredNames.get(label) ?? null,
-    })),
+  // ── Fire-and-forget: background name inference ─────────────────────────
+  // Best-effort STT + LLM call that tries to pull self-introductions out of
+  // the audio ("Hi I'm Alex", "ami Rakib bolchi"). Updates speakers.display_name
+  // in place when matches land. The route returns BEFORE this resolves so
+  // the popup can appear immediately.
+  void inferNamesInBackground({
+    meetingId: id,
+    audioUrlForLocal,
+    segments,
+    speakerLabels,
   });
+
+  // Build the response payload — signed relative URLs for any client that
+  // wants to use the response directly. (The meeting page polls and signs
+  // its own URLs server-side, so this payload is mostly informational.)
+  const responseSpeakers = await Promise.all(
+    speakerLabels.map(async (label) => {
+      const key = sampleKeysByLabel.get(label) ?? null;
+      return {
+        speakerLabel: label,
+        sampleUrl: key ? await getPresignedGetUrlForBrowser(key, 60 * 60) : null,
+        inferredName: null,
+      };
+    })
+  );
+  return NextResponse.json({ speakers: responseSpeakers });
 }
 
 /**
- * Pre-popup name inference: transcribe the audio, merge with speaker
- * segments, ask the LLM to extract self-introductions, map back from
- * "Speaker N" positional labels to the pyannote labels we use as primary
- * keys. Best-effort throughout — any failure returns an empty map and
- * the rest of the flow proceeds.
+ * Background name inference. Downloads the audio, transcribes it, asks
+ * the LLM to pull self-introductions out of the resulting transcript,
+ * and updates speakers.display_name for any speaker whose label maps
+ * cleanly back to a pyannote label.
+ *
+ * Failures here are silent on purpose — the popup still works without
+ * pre-filled names, and /process runs its own name extraction during
+ * summarization as the final fallback.
  */
-async function tryInferNames({
+async function inferNamesInBackground({
+  meetingId,
   audioUrlForLocal,
   segments,
   speakerLabels,
 }: {
+  meetingId: string;
   audioUrlForLocal: string;
   segments: { speaker: string; start: number; end: number }[];
   speakerLabels: string[];
-}): Promise<Map<string, string>> {
-  const result = new Map<string, string>();
+}): Promise<void> {
   let tmpDir: string | undefined;
   try {
     const dl = await downloadToTemp(audioUrlForLocal, "identify-audio");
     tmpDir = dl.dir;
     const words = await transcribeAudio(dl.filePath);
-    if (words.length === 0) return result;
+    if (words.length === 0) return;
 
     const utterances = mergeTranscript(words, segments);
-    if (utterances.length === 0) return result;
+    if (utterances.length === 0) return;
 
-    // Render with positional "Speaker N" labels — same scheme the LLM
-    // prompt and the popup both use.
+    // Positional labels for the LLM prompt — same scheme the popup uses.
     const positionalLabelFor = (pyannoteLabel: string) => {
       const idx = speakerLabels.indexOf(pyannoteLabel);
       return idx >= 0 ? `Speaker ${idx + 1}` : pyannoteLabel;
@@ -187,20 +214,31 @@ async function tryInferNames({
 
     const extracted = await extractSpeakerNames(named);
     for (const { label, name } of extracted) {
-      // "Speaker N" → array index → pyannote label
       const match = label.match(/^Speaker\s+(\d+)$/i);
       if (!match) continue;
       const idx = parseInt(match[1], 10) - 1;
       const pyannoteLabel = speakerLabels[idx];
       if (!pyannoteLabel) continue;
-      result.set(pyannoteLabel, name);
+
+      // Patch the displayName. Save-speakers later overwrites whatever
+      // the user typed anyway, so we don't need to guard against
+      // clobbering — but in practice, if inference finishes before the
+      // user has typed, this is a free pre-fill on the next render.
+      await db
+        .update(speakers)
+        .set({ displayName: name })
+        .where(
+          and(
+            eq(speakers.meetingId, meetingId),
+            eq(speakers.speakerLabel, pyannoteLabel)
+          )
+        );
     }
   } catch (err) {
-    console.warn(`[identify-speakers] name inference skipped:`, err);
+    console.warn(`[identify-speakers] background name inference failed:`, err);
   } finally {
     if (tmpDir) {
       await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
     }
   }
-  return result;
 }

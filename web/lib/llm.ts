@@ -120,9 +120,12 @@ async function complete({
   user: string;
   maxTokens: number;
 }): Promise<string> {
-  return env.llm.provider === "openrouter"
-    ? callOpenRouter({ system, user, maxTokens })
-    : callAnthropic({ system, user, maxTokens });
+  switch (env.llm.provider) {
+    case "openrouter":
+      return callOpenRouter({ system, user, maxTokens });
+    case "anthropic":
+      return callAnthropic({ system, user, maxTokens });
+  }
 }
 
 export async function summarizeTranscript(
@@ -199,6 +202,20 @@ async function callOpenRouter({
       // don't honour this field ignore it; the prompt still demands JSON
       // and we strip code fences below.
       response_format: { type: "json_object" },
+      // Match the team's OpenRouter privacy guardrail: only route to
+      // upstream endpoints that don't log/train on our prompts. Without
+      // this, the team's account-level "data policy" filter rejects every
+      // candidate provider with:
+      //   404 "No endpoints available matching your guardrail restrictions
+      //       and data policy."
+      // Docs: https://openrouter.ai/docs/use-cases/provider-routing
+      //   - data_collection: "deny" → require zero-log providers
+      //   - allow_fallbacks: true   → try Vertex if AI Studio is filtered,
+      //                                etc., instead of failing outright
+      provider: {
+        data_collection: "deny",
+        allow_fallbacks: true,
+      },
     }),
   });
 

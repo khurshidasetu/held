@@ -6,8 +6,12 @@
  *  - First segment with duration >= 2s; fall back to longest if none meet it.
  *  - Cap clip length at 8 seconds.
  *  - Resilient: if ffmpeg fails for one speaker, log and continue.
- *  - Returns a map of { speakerLabel: sampleUrl }. Speakers missing a sample
- *    simply don't appear in the map; the UI handles that case (no play button).
+ *  - Returns a map of { speakerLabel: storageKey }. We deliberately do NOT
+ *    sign the URL here — signed URLs go stale, and the meeting page
+ *    re-signs every render with `getPresignedGetUrlForBrowser` so the
+ *    browser gets a relative URL valid on whatever origin it loaded
+ *    from. Speakers whose sample couldn't be extracted simply don't
+ *    appear in the map; the UI handles that case (no play button).
  */
 import fs from "node:fs/promises";
 import os from "node:os";
@@ -16,7 +20,7 @@ import { Readable } from "node:stream";
 import { randomUUID } from "node:crypto";
 import ffmpegInstaller from "@ffmpeg-installer/ffmpeg";
 import ffmpeg from "fluent-ffmpeg";
-import { uploadBuffer, speakerSampleKey, getPresignedGetUrl } from "./storage";
+import { uploadBuffer, speakerSampleKey } from "./storage";
 import type { DiarizationSegment } from "./diarization";
 import { groupBySpeaker } from "./diarization";
 
@@ -26,8 +30,12 @@ const MIN_SEGMENT_SECONDS = 2;
 const MAX_CLIP_SECONDS = 8;
 
 type SampleResult = {
-  /** Map from raw pyannote label (e.g. "SPEAKER_00") to a presigned playback URL. */
-  sampleUrlsByLabel: Map<string, string>;
+  /**
+   * Map from raw pyannote label (e.g. "SPEAKER_00") to the *storage key*
+   * of the extracted MP3 clip (NOT a signed URL). Callers should sign on
+   * demand via getPresignedGetUrlForBrowser / getPresignedGetUrl.
+   */
+  sampleKeysByLabel: Map<string, string>;
   /** Stable list of all distinct speaker labels in original-appearance order. */
   speakerLabels: string[];
 };
@@ -46,7 +54,7 @@ export async function extractSpeakerSamples({
 
   const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), `held-${meetingId}-`));
   const sourceFile = path.join(tmpDir, `source-${randomUUID()}.audio`);
-  const sampleUrlsByLabel = new Map<string, string>();
+  const sampleKeysByLabel = new Map<string, string>();
 
   try {
     await downloadToFile(audioSourceUrl, sourceFile);
@@ -75,8 +83,11 @@ export async function extractSpeakerSamples({
           cacheControl: "private, max-age=3600",
         });
 
-        const url = await getPresignedGetUrl(key, 60 * 60);
-        sampleUrlsByLabel.set(label, url);
+        // Store the KEY, not a URL. Signed URLs expire (1 h here) and
+        // pre-baking one into the DB row means stale links once the
+        // user reopens the page later. The meeting page signs fresh
+        // every render via getPresignedGetUrlForBrowser.
+        sampleKeysByLabel.set(label, key);
       } catch (err) {
         // Per spec: resilient — log and continue.
         console.error(
@@ -91,7 +102,7 @@ export async function extractSpeakerSamples({
     await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
   }
 
-  return { sampleUrlsByLabel, speakerLabels };
+  return { sampleKeysByLabel, speakerLabels };
 }
 
 function pickSample(

@@ -37,6 +37,19 @@ const BodySchema = z.object({
       displayName: z.string().min(1),
     })
   ),
+  // Merge directives from the popup. `from` is a duplicate pyannote
+  // speaker label, `into` is the real speaker it should be folded into.
+  // We rewrite the cached diarization segments so the /process merge
+  // step attributes both labels' words to the surviving row.
+  // Optional for back-compat with older clients that don't send it.
+  merges: z
+    .array(
+      z.object({
+        from: z.string(),
+        into: z.string(),
+      })
+    )
+    .default([]),
 });
 
 type Context = { params: Promise<{ id: string }> };
@@ -69,14 +82,48 @@ export async function POST(request: Request, ctx: Context) {
     return NextResponse.json({ error: "Invalid body" }, { status: 400 });
   }
 
+  // ── Apply merges first ────────────────────────────────────────────────
+  // Pyannote sometimes splits one real person into two speakers. The popup
+  // lets the user mark a duplicate via "Same as Speaker N"; here we
+  // rewrite the cached diarization segments so every segment whose
+  // speaker is a `from` label gets retagged to the corresponding `into`
+  // label. /process reads these segments later, so the merge "just
+  // works" without any per-segment fix-up downstream. The duplicate
+  // speaker rows are then deleted along with anything the user removed
+  // outright.
+  if (body.merges.length > 0) {
+    // Resolve any chains client-side missed (defensive — the popup
+    // already flattens, but a merge into a target that's itself a `from`
+    // would otherwise leave dangling references).
+    const mergeMap = new Map<string, string>();
+    for (const m of body.merges) mergeMap.set(m.from, m.into);
+    function resolve(label: string): string {
+      const seen = new Set<string>();
+      let cur = label;
+      while (mergeMap.has(cur) && !seen.has(cur)) {
+        seen.add(cur);
+        cur = mergeMap.get(cur)!;
+      }
+      return cur;
+    }
+    const rewritten = (meeting.diarizationSegments ?? []).map((seg) => {
+      const target = resolve(seg.speaker);
+      return target === seg.speaker ? seg : { ...seg, speaker: target };
+    });
+    await db
+      .update(meetings)
+      .set({ diarizationSegments: rewritten })
+      .where(eq(meetings.id, id));
+  }
+
   // Reconcile detected speakers: for each existing detected row (not a silent
   // attendee), either update its display name (if the user kept it) or delete
-  // it (if the user removed it via the popup's trash button — diarization
-  // sometimes clusters one person as two, this lets them prune).
+  // it (if the user removed it via trash, or merged it into another row).
   //
-  // Words attributed to a deleted speaker label fall out of the transcript:
-  // the merge step in /process drops utterances whose label has no matching
-  // speaker row (see lib/merge-transcript.ts → findSpeakerAt).
+  // Removed rows: their words fall out of the transcript via /process's
+  // ghost-speaker prune.
+  // Merged rows: their words now carry the target's label (rewritten above),
+  // so deleting the duplicate row is safe — the target absorbs everything.
   const existingDetected = await db
     .select({ speakerLabel: speakers.speakerLabel })
     .from(speakers)

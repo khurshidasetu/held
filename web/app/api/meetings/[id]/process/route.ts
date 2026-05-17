@@ -18,7 +18,7 @@
  */
 import { NextResponse } from "next/server";
 import fs from "node:fs/promises";
-import { eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import {
   db,
   meetings,
@@ -118,9 +118,51 @@ async function runPipeline(
     .from(speakers)
     .where(eq(speakers.meetingId, meetingId));
 
-  const labelToId = new Map(speakerRows.map((s) => [s.speakerLabel, s.id]));
+  // ── Prune ghost speakers ────────────────────────────────────────────────
+  // pyannote sometimes returns a "speaker" that's really just a fragment of
+  // background noise — visible to identify-speakers (so it gets a row and
+  // a sample), survives the popup (because the user has no way to know
+  // it's a ghost), then ends up with zero merged utterances here. The
+  // result: a speaker row that the transcript view skips entirely, leaving
+  // gaps in the positional labels ("Speaker 2", "Speaker 3", no Speaker 1).
+  //
+  // If a non-silent speaker has zero utterances, drop the row before we
+  // build the labelToId map. Silent attendees by definition have no
+  // utterances and must stay — they're skipped by the heuristic via
+  // isSilentAttendee.
+  const labelsWithUtterances = new Set(utterances.map((u) => u.speakerLabel));
+  const ghostSpeakerIds = speakerRows
+    .filter(
+      (s) => !s.isSilentAttendee && !labelsWithUtterances.has(s.speakerLabel)
+    )
+    .map((s) => s.id);
+  if (ghostSpeakerIds.length > 0) {
+    console.warn(
+      `[process] pruning ${ghostSpeakerIds.length} ghost speaker(s) for ${meetingId} (rows with zero merged utterances)`
+    );
+    await db
+      .delete(speakers)
+      .where(
+        and(
+          eq(speakers.meetingId, meetingId),
+          inArray(speakers.id, ghostSpeakerIds)
+        )
+      );
+  }
+
+  // Re-read speakerRows after the prune so labelToId / labelToName don't
+  // reference deleted rows. Cheap (PK + indexed meetingId).
+  const liveSpeakerRows =
+    ghostSpeakerIds.length > 0
+      ? await db
+          .select()
+          .from(speakers)
+          .where(eq(speakers.meetingId, meetingId))
+      : speakerRows;
+
+  const labelToId = new Map(liveSpeakerRows.map((s) => [s.speakerLabel, s.id]));
   const labelToName = new Map(
-    speakerRows.map((s, i) => [
+    liveSpeakerRows.map((s, i) => [
       s.speakerLabel,
       s.displayName ?? `Speaker ${i + 1}`,
     ])
@@ -174,18 +216,19 @@ async function runPipeline(
   // displayName="Alex"). Only fills speakers whose displayName is still
   // null — never overrides a name the user typed in the popup. The label
   // from the LLM matches the positional label we rendered into the
-  // transcript ("Speaker N"), so look it up in labelToPositional.
+  // transcript ("Speaker N"), built off liveSpeakerRows (post-prune) so
+  // numbering matches what the transcript will show.
   if (summary.speakerNames.length > 0) {
     const positionalToRowId = new Map<string, string>();
-    speakerRows.forEach((s, i) => {
+    liveSpeakerRows.forEach((s, i) => {
       positionalToRowId.set(`Speaker ${i + 1}`, s.id);
     });
     for (const { label, name } of summary.speakerNames) {
       const rowId = positionalToRowId.get(label);
       if (!rowId) continue;
-      // Look up the row by id to check displayName — speakerRows was
+      // Look up the row by id to check displayName — liveSpeakerRows was
       // captured before this update so it has the pre-summary state.
-      const row = speakerRows.find((r) => r.id === rowId);
+      const row = liveSpeakerRows.find((r) => r.id === rowId);
       if (!row || row.displayName) continue; // user-named: leave alone
       await db
         .update(speakers)

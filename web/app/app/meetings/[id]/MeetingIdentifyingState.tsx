@@ -4,17 +4,22 @@
  * Shown on the meeting page right after upload, while pyannote diarization
  * runs in the background (kicked off fire-and-forget from /api/meetings/upload).
  *
- * The component polls /status every 2 seconds. The MOMENT diarization
- * completes the server-side handler attaches the speakers rows; we don't
- * see that here directly, but a fresh router.refresh() will pull them in
- * and the parent page will swap us out for the SpeakerNamingPopup. We
- * exit the polling loop as soon as the status is no longer
- * "awaiting_speaker_naming" with zero speakers.
+ * The component polls every 2.5 seconds. The MOMENT diarization completes
+ * the server-side identify-speakers handler attaches the speakers rows;
+ * a fresh router.refresh() pulls them in and the parent page swaps us out
+ * for the SpeakerNamingPopup.
+ *
+ * The wait can be 60+s on CPU pyannote, which is too long to stare at a
+ * spinner — so we surface a "Continue in background" escape hatch after
+ * the first ~5s. It just navigates to /app/meetings; the recording stays
+ * safely in the DB and the user can name speakers from the list whenever
+ * they come back.
  */
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 
-export function MeetingIdentifyingState({ meetingId }: { meetingId: string }) {
+export function MeetingIdentifyingState({ meetingId: _meetingId }: { meetingId: string }) {
   const router = useRouter();
   const [elapsed, setElapsed] = useState(0);
 
@@ -46,19 +51,33 @@ export function MeetingIdentifyingState({ meetingId }: { meetingId: string }) {
     };
   }, [router]);
 
+  // After ~5s of waiting, surface the "I'll come back later" link so users
+  // who don't want to stare at a spinner can keep working. Recording is
+  // already saved server-side, so navigating away is safe.
+  const showEscapeHatch = elapsed >= 5;
+
   return (
     <div className="page-fade flex flex-col items-center justify-center min-h-[70dvh] sm:min-h-[60vh] text-center space-y-4 px-6">
       <div className="h-10 w-10 rounded-full border-4 border-brand/20 border-t-brand animate-spin" />
       <div className="max-w-sm">
         <div className="font-medium">Identifying speakers&hellip;</div>
         <p className="text-sm text-muted-foreground mt-1">
-          Detecting distinct voices in your recording. On CPU this is the
-          slowest step &mdash; usually under a minute for short clips.
+          Recording is safely saved. We&rsquo;re detecting distinct voices in
+          the background &mdash; on CPU this is the slowest step, usually
+          under a minute for short clips.
         </p>
         <p className="text-xs text-muted-foreground mt-3 tabular-nums">
           Working for {formatElapsed(elapsed)}&hellip;
         </p>
       </div>
+      {showEscapeHatch && (
+        <Link
+          href="/app/meetings"
+          className="tap-target inline-flex items-center gap-1 px-3 py-2 text-sm text-brand hover:text-brand-hover font-medium"
+        >
+          Continue in background &rarr;
+        </Link>
+      )}
     </div>
   );
 }

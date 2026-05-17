@@ -14,7 +14,7 @@
  *   - Skip and Continue both proceed; Skip just doesn't save any names.
  *   - Silent attendees with empty names are dropped (not saved).
  */
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 export type DetectedSpeaker = {
   speakerLabel: string;
@@ -33,11 +33,20 @@ type SilentEntry = {
   name: string;
 };
 
+/**
+ * Merge directive emitted on submit. `from` is the duplicate speaker
+ * pyannote produced; `into` is the real speaker they should be folded
+ * into. save-speakers rewrites the cached diarization segments so the
+ * /process merge step attributes both labels' words to one row.
+ */
+type MergeDirective = { from: string; into: string };
+
 type Props = {
   speakers: DetectedSpeaker[];
   onSubmit: (
     detected: { speakerLabel: string; displayName: string | null }[],
-    silentAttendees: { displayName: string }[]
+    silentAttendees: { displayName: string }[],
+    merges: MergeDirective[]
   ) => void | Promise<void>;
   onSkip: () => void | Promise<void>;
 };
@@ -51,20 +60,66 @@ export function SpeakerNamingPopup({ speakers, onSubmit, onSkip }: Props) {
       speakers.map((s) => [s.speakerLabel, s.currentName ?? ""])
     )
   );
-  // Labels the user removed (diarization often clusters one person as two
-  // speakers; this lets them prune those duplicates). Removed speakers
-  // aren't sent on submit, so save-speakers will delete the row server-side
-  // and any words attributed to that label fall out of the transcript.
+  // Labels the user explicitly removed — these speakers are not the same
+  // person as anyone else, they're just noise (e.g. a passing voice or
+  // a phantom pyannote cluster). save-speakers deletes the row and any
+  // words attributed to that label drop out of the transcript entirely.
   const [removed, setRemoved] = useState<Set<string>>(() => new Set());
+  // Merge map: { fromLabel -> intoLabel }. Lets the user fix the common
+  // case where pyannote splits one real person into two speakers. Words
+  // attributed to `from` get re-attributed to `into` in /process via the
+  // diarization-segment rewrite, so NOTHING is lost — unlike `removed`.
+  const [mergedInto, setMergedInto] = useState<Map<string, string>>(
+    () => new Map()
+  );
+  // The speaker label whose merge-target picker is currently expanded.
+  // Only one picker visible at a time; clicking another row's "Same as…"
+  // button replaces this.
+  const [mergePickerFor, setMergePickerFor] = useState<string | null>(null);
   const [silents, setSilents] = useState<SilentEntry[]>([]);
   const [submitting, setSubmitting] = useState(false);
+
+  // Reactive name pre-fill. The popup is mounted as soon as identify-speakers
+  // inserts the speaker rows, but the background name-inference task may
+  // still be running. When it lands, the parent re-fetches and passes us a
+  // new `speakers` array with currentName populated; we adopt those names
+  // ONLY for inputs the user hasn't typed in yet, so we never clobber
+  // manual entries.
+  useEffect(() => {
+    setNames((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      for (const s of speakers) {
+        const inferred = s.currentName?.trim();
+        if (!inferred) continue;
+        const userValue = next[s.speakerLabel]?.trim() ?? "";
+        if (userValue.length === 0 && next[s.speakerLabel] !== inferred) {
+          next[s.speakerLabel] = inferred;
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [speakers]);
 
   // Currently-playing label → so we can pause the previous one when a new
   // play button is pressed.
   const [playingLabel, setPlayingLabel] = useState<string | null>(null);
+  // Per-speaker "couldn't play" flag. Set when <audio> fires onError or
+  // when .play() rejects. Shown as a tiny "can't play" hint next to the
+  // play button so silent failures stop being silent — and a console.warn
+  // lands so future regressions surface in devtools.
+  const [playbackError, setPlaybackError] = useState<Record<string, string>>(
+    {}
+  );
   const audioRefs = useRef<Map<string, HTMLAudioElement>>(new Map());
 
-  const visibleSpeakers = speakers.filter((s) => !removed.has(s.speakerLabel));
+  // Speakers shown in the main list: anyone the user hasn't removed AND
+  // hasn't merged into someone else. The "into" target of a merge stays
+  // visible (it absorbs the duplicate).
+  const visibleSpeakers = speakers.filter(
+    (s) => !removed.has(s.speakerLabel) && !mergedInto.has(s.speakerLabel)
+  );
 
   function removeDetected(label: string) {
     // Pause its audio (if playing) before unmounting the <audio>.
@@ -77,6 +132,26 @@ export function SpeakerNamingPopup({ speakers, onSubmit, onSkip }: Props) {
       next.add(label);
       return next;
     });
+    // If this speaker had the merge picker open, close it.
+    if (mergePickerFor === label) setMergePickerFor(null);
+  }
+
+  function openMergePicker(label: string) {
+    setMergePickerFor((curr) => (curr === label ? null : label));
+  }
+
+  function mergeIntoSpeaker(fromLabel: string, intoLabel: string) {
+    // Pause any audio playing on the about-to-disappear row.
+    if (playingLabel === fromLabel) {
+      audioRefs.current.get(fromLabel)?.pause();
+      setPlayingLabel(null);
+    }
+    setMergedInto((prev) => {
+      const next = new Map(prev);
+      next.set(fromLabel, intoLabel);
+      return next;
+    });
+    setMergePickerFor(null);
   }
 
   function setAudioRef(label: string) {
@@ -97,10 +172,31 @@ export function SpeakerNamingPopup({ speakers, onSubmit, onSkip }: Props) {
     if (playingLabel) {
       audioRefs.current.get(playingLabel)?.pause();
     }
+    setPlaybackError((prev) => {
+      if (!(label in prev)) return prev;
+      const next = { ...prev };
+      delete next[label];
+      return next;
+    });
     audio.currentTime = 0;
     audio.play().then(
       () => setPlayingLabel(label),
-      () => setPlayingLabel(null)
+      (err: unknown) => {
+        // .play() rejects on autoplay block, decoder errors, network
+        // failures (404/403), and a few other edge cases. Log + surface
+        // to UI so this can't fail silently like it did before.
+        console.warn(
+          `[SpeakerNamingPopup] play() rejected for ${label}:`,
+          err,
+          "src=",
+          audio.currentSrc || audio.src
+        );
+        setPlayingLabel(null);
+        setPlaybackError((prev) => ({
+          ...prev,
+          [label]: err instanceof Error ? err.message : "Playback failed",
+        }));
+      }
     );
   }
 
@@ -128,8 +224,21 @@ export function SpeakerNamingPopup({ speakers, onSubmit, onSkip }: Props) {
     const silentAttendees = silents
       .map((s) => ({ displayName: s.name.trim() }))
       .filter((s) => s.displayName.length > 0);
+    // Resolve merge chains so the server gets a flat from→ultimate-into
+    // map. (User could in theory merge A into B and then later merge B
+    // into C; we want A and B both pointing to C.)
+    const merges: MergeDirective[] = [];
+    for (const [from, into] of mergedInto) {
+      let target = into;
+      const seen = new Set<string>([from]);
+      while (mergedInto.has(target) && !seen.has(target)) {
+        seen.add(target);
+        target = mergedInto.get(target)!;
+      }
+      merges.push({ from, into: target });
+    }
     try {
-      await onSubmit(detected, silentAttendees);
+      await onSubmit(detected, silentAttendees, merges);
     } finally {
       setSubmitting(false);
     }
@@ -185,11 +294,17 @@ export function SpeakerNamingPopup({ speakers, onSubmit, onSkip }: Props) {
           {visibleSpeakers.map((s, i) => {
             const label = `Speaker ${i + 1}`;
             const isPlaying = playingLabel === s.speakerLabel;
+            const showMergePicker = mergePickerFor === s.speakerLabel;
+            // Other visible speakers this row could be merged into.
+            const mergeCandidates = visibleSpeakers
+              .map((other, otherIdx) => ({ other, idx: otherIdx }))
+              .filter(({ other }) => other.speakerLabel !== s.speakerLabel);
             return (
               <div
                 key={s.speakerLabel}
-                className="flex items-center gap-3 p-2 rounded-lg border border-border bg-background"
+                className="rounded-lg border border-border bg-background"
               >
+                <div className="flex items-center gap-3 p-2">
                 <div className="w-20 shrink-0 text-sm font-medium text-foreground">
                   {label}
                 </div>
@@ -202,7 +317,16 @@ export function SpeakerNamingPopup({ speakers, onSubmit, onSkip }: Props) {
                       aria-label={
                         isPlaying ? `Pause ${label} sample` : `Play ${label} sample`
                       }
-                      className="tap-target inline-flex items-center justify-center rounded-full border border-border hover:bg-foreground/5"
+                      title={
+                        playbackError[s.speakerLabel]
+                          ? `Couldn't play: ${playbackError[s.speakerLabel]}`
+                          : undefined
+                      }
+                      className={`tap-target inline-flex items-center justify-center rounded-full border border-border hover:bg-foreground/5 ${
+                        playbackError[s.speakerLabel]
+                          ? "text-red-600 border-red-500/30"
+                          : ""
+                      }`}
                     >
                       {isPlaying ? <PauseIcon /> : <PlayIcon />}
                     </button>
@@ -211,6 +335,37 @@ export function SpeakerNamingPopup({ speakers, onSubmit, onSkip }: Props) {
                       src={s.sampleUrl}
                       preload="none"
                       onEnded={() => setPlayingLabel(null)}
+                      onError={(e) => {
+                        // Network/decode error on the <audio> element. Mirrors
+                        // the .play() reject path so both failure modes
+                        // surface the same way. MediaError codes:
+                        //   1 ABORTED, 2 NETWORK, 3 DECODE, 4 SRC_NOT_SUPPORTED
+                        const el = e.currentTarget;
+                        const code = el.error?.code;
+                        const msg =
+                          code === 4
+                            ? "Sample format unsupported"
+                            : code === 3
+                              ? "Sample failed to decode"
+                              : code === 2
+                                ? "Network error fetching sample"
+                                : "Couldn't load sample";
+                        console.warn(
+                          `[SpeakerNamingPopup] <audio> error for ${s.speakerLabel}:`,
+                          msg,
+                          "code=",
+                          code,
+                          "src=",
+                          el.currentSrc || el.src
+                        );
+                        setPlaybackError((prev) => ({
+                          ...prev,
+                          [s.speakerLabel]: msg,
+                        }));
+                        if (playingLabel === s.speakerLabel) {
+                          setPlayingLabel(null);
+                        }
+                      }}
                     />
                   </>
                 ) : (
@@ -231,15 +386,57 @@ export function SpeakerNamingPopup({ speakers, onSubmit, onSkip }: Props) {
                   className="tap-target flex-1 min-w-0 px-3 py-2 rounded-md border border-border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-brand"
                 />
 
+                {mergeCandidates.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => openMergePicker(s.speakerLabel)}
+                    aria-label={`Mark ${label} as the same person as another speaker`}
+                    aria-expanded={showMergePicker}
+                    title="Same person as another speaker"
+                    className={`tap-target inline-flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-foreground/5 ${
+                      showMergePicker ? "bg-foreground/10 text-foreground" : ""
+                    }`}
+                  >
+                    <MergeIcon />
+                  </button>
+                )}
+
                 <button
                   type="button"
                   onClick={() => removeDetected(s.speakerLabel)}
-                  aria-label={`Remove ${label} (use when diarization split one person into two)`}
-                  title="Remove this speaker"
+                  aria-label={`Remove ${label} (drops their words from the transcript)`}
+                  title="Remove this speaker (noise / not a real participant)"
                   className="tap-target inline-flex items-center justify-center rounded-md text-muted-foreground hover:text-red-600 hover:bg-red-500/10"
                 >
                   <TrashIcon />
                 </button>
+                </div>
+                {showMergePicker && (
+                  <div className="px-3 pb-3 pt-1 border-t border-border/60 flex flex-wrap items-center gap-2 text-sm">
+                    <span className="text-muted-foreground">
+                      Same as&nbsp;
+                    </span>
+                    {mergeCandidates.map(({ other, idx }) => (
+                      <button
+                        key={other.speakerLabel}
+                        type="button"
+                        onClick={() =>
+                          mergeIntoSpeaker(s.speakerLabel, other.speakerLabel)
+                        }
+                        className="tap-target inline-flex items-center px-3 py-1.5 rounded-full bg-brand/10 text-brand hover:bg-brand/20 text-xs font-medium"
+                      >
+                        Speaker {idx + 1}
+                      </button>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() => setMergePickerFor(null)}
+                      className="tap-target inline-flex items-center px-3 py-1.5 rounded-full text-muted-foreground hover:text-foreground hover:bg-foreground/5 text-xs"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                )}
               </div>
             );
           })}
@@ -344,6 +541,28 @@ function TrashIcon() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="18" height="18" strokeLinecap="round" strokeLinejoin="round">
       <path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m-9 0v14a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2V6" />
+    </svg>
+  );
+}
+
+function MergeIcon() {
+  // Two arrows converging into one — visual metaphor for "fold this
+  // speaker into another." Custom SVG; matches the line weight of the
+  // other icons in the row (strokeWidth=2, 18×18).
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      width="18"
+      height="18"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M8 4 4 8M4 8l4 4M4 8h7a4 4 0 0 1 4 4v8" />
+      <path d="M16 4l4 4M20 8l-4 4" />
     </svg>
   );
 }

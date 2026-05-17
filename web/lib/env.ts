@@ -153,10 +153,9 @@ export const env = {
   },
 
   // LLM provider for meeting summaries.
-  //   - "openrouter" (default) — OpenAI-compatible proxy that routes to Claude
-  //     and many others. One key works for everything; "anthropic/claude-sonnet-4.5"
-  //     is the default model slug.
-  //   - "anthropic" — direct to Anthropic's API.
+  //   - "openrouter" — OpenAI-compatible proxy that routes to many models
+  //     (default). One key, pick any model via OPENROUTER_MODEL.
+  //   - "anthropic"  — direct to Anthropic's API.
   llm: {
     get provider(): "openrouter" | "anthropic" {
       const v = (process.env.LLM_PROVIDER || "openrouter").toLowerCase();
