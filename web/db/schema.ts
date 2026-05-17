@@ -53,6 +53,14 @@ export const meetings = mysqlTable(
     diarizationSegments: json("diarization_segments").$type<
       RawDiarizationSegment[]
     >(),
+    // Cached word-level STT output. Populated by the /transcribe-words
+    // background task that runs in parallel with /identify-speakers from
+    // /upload, so by the time the user finishes naming speakers, /process
+    // can skip the STT round-trip and go straight to merge + summary.
+    // Each entry: { text, start, end } in seconds from audio start.
+    transcriptWords: json("transcript_words").$type<
+      { text: string; start: number; end: number }[]
+    >(),
     createdAt: timestamp("created_at")
       .notNull()
       .default(sql`CURRENT_TIMESTAMP`),

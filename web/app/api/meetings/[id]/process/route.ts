@@ -94,20 +94,52 @@ async function runPipeline(
   audioKey: string,
   rawSegments: { speaker: string; start: number; end: number }[]
 ): Promise<void> {
-  const audioUrl = await getPresignedGetUrl(audioKey, 60 * 60);
+  // Fast path: STT already ran in the background (kicked off from /upload
+  // in parallel with /identify-speakers) and cached its word array on
+  // the meeting row. By the time the user finishes naming speakers, this
+  // is almost always populated — we skip the download + STT round trip
+  // and go straight to merge + summary.
+  //
+  // Fallback path: cache is missing (e.g. background task hadn't started
+  // yet, hit the OpenRouter guardrail, or just transient failure). Run
+  // STT inline like the old single-threaded flow.
+  const [cachedMeeting] = await db
+    .select({ transcriptWords: meetings.transcriptWords })
+    .from(meetings)
+    .where(eq(meetings.id, meetingId))
+    .limit(1);
 
-  const { filePath: sourceFile, dir: tmpDir } = await downloadToTemp(
-    audioUrl,
-    `meeting-${meetingId}.audio`
-  );
-
-  let words;
-  try {
-    // STT layer handles PCM transcoding internally and dispatches to the
-    // configured provider (mock or cartesia).
-    words = await transcribeAudio(sourceFile);
-  } finally {
-    await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
+  let words: { text: string; start: number; end: number }[];
+  if (
+    cachedMeeting?.transcriptWords &&
+    cachedMeeting.transcriptWords.length > 0
+  ) {
+    console.info(
+      `[process] meeting=${meetingId} using cached STT (${cachedMeeting.transcriptWords.length} words)`
+    );
+    words = cachedMeeting.transcriptWords;
+  } else {
+    console.info(
+      `[process] meeting=${meetingId} STT cache miss, running inline`
+    );
+    const audioUrl = await getPresignedGetUrl(audioKey, 60 * 60);
+    const { filePath: sourceFile, dir: tmpDir } = await downloadToTemp(
+      audioUrl,
+      `meeting-${meetingId}.audio`
+    );
+    try {
+      // STT layer handles PCM transcoding internally and dispatches to the
+      // configured provider (mock / cartesia / gemini-audio).
+      words = await transcribeAudio(sourceFile);
+    } finally {
+      await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
+    }
+    // Backfill the cache so a hypothetical re-process picks up the fast
+    // path — not load-bearing, just nice.
+    await db
+      .update(meetings)
+      .set({ transcriptWords: words })
+      .where(eq(meetings.id, meetingId));
   }
 
   const utterances = mergeTranscript(words, rawSegments);

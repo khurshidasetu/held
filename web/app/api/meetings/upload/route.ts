@@ -100,11 +100,25 @@ export async function POST(request: Request) {
     );
   }
 
-  // Fire-and-forget identify-speakers so the client can navigate to the
-  // meeting page immediately rather than waiting 30-90s on the recorder
-  // screen. The meeting page polls and renders the SpeakerNamingPopup
-  // inline the moment diarization finishes.
+  // Kick off the two slow stages of the pipeline IN PARALLEL:
+  //
+  //   1. identify-speakers: diarization + sample extraction + speaker rows.
+  //      Drives the naming popup.
+  //   2. transcribe-words: STT pass over the same audio, cached on the
+  //      meeting row.
+  //
+  // They don't depend on each other — diarization just needs the audio,
+  // STT just needs the audio. Running them sequentially (the old shape)
+  // made the user wait diarization_time + stt_time end-to-end. With both
+  // fired in parallel, total wall time is max(diarization, stt) + the
+  // user's naming time. /process can then skip the STT step (cache hit)
+  // and go straight to merge + summary, which is a few seconds.
+  //
+  // Both are fire-and-forget. The naming popup polls for diarization to
+  // finish; /process tolerates the STT cache being missing and runs it
+  // inline as a fallback if needed.
   void triggerIdentifySpeakers(meetingId);
+  void triggerTranscribeWords(meetingId);
 
   return NextResponse.json({ meetingId });
 }
@@ -117,6 +131,22 @@ async function triggerIdentifySpeakers(meetingId: string): Promise<void> {
   } catch (err) {
     console.error(
       `[upload] failed to trigger identify-speakers for ${meetingId}:`,
+      err
+    );
+  }
+}
+
+async function triggerTranscribeWords(meetingId: string): Promise<void> {
+  try {
+    await fetch(`${env.appUrl}/api/meetings/${meetingId}/transcribe-words`, {
+      method: "POST",
+      headers: { "X-Internal-Secret": env.internalWorkerSecret },
+    });
+  } catch (err) {
+    // Same fire-and-forget pattern — best effort. /process will run STT
+    // itself if the cache is missing when it gets there.
+    console.error(
+      `[upload] failed to trigger transcribe-words for ${meetingId}:`,
       err
     );
   }
