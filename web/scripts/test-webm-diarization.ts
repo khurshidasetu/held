@@ -24,7 +24,7 @@ const DIARIZATION_URL = process.env.DIARIZATION_SERVICE_URL ?? "http://localhost
 const DIARIZATION_KEY = process.env.DIARIZATION_SERVICE_API_KEY!;
 
 async function main() {
-  const dir = mkdtempSync(join(tmpdir(), "minutely-webm-"));
+  const dir = mkdtempSync(join(tmpdir(), "held-webm-"));
   const outFile = join(dir, "test.webm");
 
   console.log(`→ encoding 15s WebM/Opus (no container-level duration)…`);

@@ -1,15 +1,22 @@
-# Local development services for Minutely.
+# Local development services for Held.
 #
 # Usage:
-#   docker compose up -d                 # start MySQL in the background
+#   docker compose up -d                 # start MySQL + diarization
 #   docker compose logs -f mysql         # tail the MySQL log
 #   docker compose ps                    # see status
-#   docker compose down                  # stop (data persists in the volume)
-#   docker compose down -v               # stop AND wipe the data volume
+#   docker compose down                  # stop (data persists in volumes)
+#   docker compose down -v               # stop AND wipe data volumes
 #
 # The web app reads DATABASE_URL from web/.env.local, NOT from this file.
 # Make sure the credentials there match what the container exposes
-# (default: root/root on localhost:3306, database "minutely").
+# (default: root/root on localhost:3306, database "held").
+#
+# Note on volume naming: `held-mysql-data` is the on-disk Docker volume
+# that holds the MySQL data files (your recordings, transcripts, summaries).
+# The first time you `docker compose up` after this rename, it expects to
+# find that volume — if you're migrating from an older `minutely-mysql-data`
+# volume, see the rename migration steps in the README before bringing
+# the stack up.
 
 services:
   # ─── Diarization service ────────────────────────────────────────────
@@ -25,13 +32,13 @@ services:
   #   • Dockerfile     — real pyannote.audio on GPU. Production target.
   #
   # First start of a real-mode image downloads ~1 GB of model weights into
-  # the named volume `minutely-hf-cache`. Subsequent starts are fast.
+  # the named volume `held-hf-cache`. Subsequent starts are fast.
   diarization:
     build:
       context: ./diarization
       dockerfile: Dockerfile.cpu
-    image: minutely-diarization:cpu
-    container_name: minutely-diarization
+    image: held-diarization:cpu
+    container_name: held-diarization
     restart: unless-stopped
     env_file:
       - ./diarization/.env
@@ -39,8 +46,8 @@ services:
       - "127.0.0.1:8000:8000"
     volumes:
       # Persist model weights across container replacements.
-      - minutely-hf-cache:/root/.cache/huggingface
-      - minutely-torch-cache:/root/.cache/torch
+      - held-hf-cache:/root/.cache/huggingface
+      - held-torch-cache:/root/.cache/torch
     extra_hosts:
       # Lets the diarization container reach the host's localhost:3000
       # (the Next.js dev server) at http://host.docker.internal:3000.
@@ -57,22 +64,22 @@ services:
   mysql:
     build:
       context: ./infra/mysql
-    image: minutely-mysql:local
-    container_name: minutely-mysql
+    image: held-mysql:local
+    container_name: held-mysql
     restart: unless-stopped
     environment:
       # The base image creates this database on first start. The init SQL
       # in infra/mysql/init/ also adds an application user; pick either set
       # of credentials for DATABASE_URL.
       MYSQL_ROOT_PASSWORD: root
-      MYSQL_DATABASE: minutely
+      MYSQL_DATABASE: held
       TZ: UTC
     ports:
       # host:container — bind to localhost only so the DB isn't exposed
       # outside this machine.
       - "127.0.0.1:3306:3306"
     volumes:
-      - minutely-mysql-data:/var/lib/mysql
+      - held-mysql-data:/var/lib/mysql
     healthcheck:
       test:
         - "CMD"
@@ -88,9 +95,14 @@ services:
       start_period: 30s
 
 volumes:
-  minutely-mysql-data:
+  # NOTE: We point `held-mysql-data` at the existing on-disk volume from
+  # the Minutely-era setup (`minutely-mysql-data`) so the 13 dev meetings
+  # survive the rename. If you're setting this up fresh and don't have
+  # that volume, change `external: true` to a plain managed volume.
+  held-mysql-data:
     name: minutely-mysql-data
-  minutely-hf-cache:
-    name: minutely-hf-cache
-  minutely-torch-cache:
-    name: minutely-torch-cache
+    external: true
+  held-hf-cache:
+    name: held-hf-cache
+  held-torch-cache:
+    name: held-torch-cache

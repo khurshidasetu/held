@@ -85,26 +85,26 @@ docker run --rm --gpus all nvidia/cuda:12.1.1-base-ubuntu22.04 nvidia-smi
 ### 3. Build and run
 
 ```bash
-git clone <your-fork-of-minutely>
-cd minutely/diarization
+git clone <your-fork-of-held>
+cd held/diarization
 
 cp .env.example .env
 # fill in DIARIZATION_API_KEY and HUGGINGFACE_TOKEN
 
-docker build -t minutely-diarization .
+docker build -t held-diarization .
 
 # Persist the model cache across container restarts so we don't re-download
 # the ~1 GB of pyannote weights on every deploy.
-docker volume create minutely-hf-cache
+docker volume create held-hf-cache
 
 docker run -d \
-  --name minutely-diarization \
+  --name held-diarization \
   --gpus all \
   --restart unless-stopped \
   -p 8000:8000 \
   --env-file .env \
-  -v minutely-hf-cache:/root/.cache/huggingface \
-  minutely-diarization
+  -v held-hf-cache:/root/.cache/huggingface \
+  held-diarization
 ```
 
 ### 4. (Recommended) Put it behind TLS

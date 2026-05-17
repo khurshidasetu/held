@@ -12,16 +12,19 @@ hidden one swipe away. The result is emailed (or shared) to attendees plus
 any extra recipients. Works on desktop and on mobile (Chrome on Android,
 Safari on iOS).
 
-> Repo / Docker resource names are still `minutely-*` for historical
-> reasons — they're internal infra labels and renaming would invalidate the
-> existing data volumes. The product is "Held" everywhere user-facing.
+> The on-disk Docker volume that holds MySQL data is still named
+> `minutely-mysql-data` — that's the volume from the old project name; we
+> keep it as the source of truth so existing recordings survive. It's
+> exposed in compose as the externally-managed `held-mysql-data`. Every
+> other Docker resource (containers, images, HF/torch caches) is now `held-*`.
+> The repo folder is still `minutely/` on disk — feel free to rename.
 
 ## Architecture
 
 Two services in one repository:
 
 ```
-minutely/
+held/
 ├── web/            Next.js 16 PWA (App Router, TypeScript, Tailwind)
 │                   - Clerk auth, MySQL + Drizzle, AWS S3
 │                   - Cartesia Ink-Whisper for streaming STT
@@ -89,16 +92,18 @@ docker compose logs -f mysql   # tail the log if anything looks off
 The image source lives in [`infra/mysql/`](./infra/mysql/):
 - `Dockerfile` — extends `mysql:8.0`, copies in our config + init scripts
 - `my.cnf` — utf8mb4 everywhere, UTC time zone, strict SQL mode
-- `init/01-init.sql` — creates the `minutely` app user on first start
+- `init/01-init.sql` — creates the `held` app user on first start
 
 Default credentials (override via env if needed):
-- Database: `minutely`
+- Database: `held`
 - Root: `root` / `root` (use this for `DATABASE_URL` in `.env.local`)
-- App user: `minutely` / `minutely`
+- App user: `held` / `held`
 - Port: `127.0.0.1:3306` (bound to loopback only)
 
-Data persists in the named volume `minutely-mysql-data`. `docker compose down`
-keeps your data; `docker compose down -v` wipes it.
+Data persists in the named volume `minutely-mysql-data` (kept under the
+historical name so the existing volume isn't orphaned; everything else is
+`held-*`). `docker compose down` keeps your data; `docker compose down -v`
+wipes it.
 
 If you'd rather use a hosted MySQL (PlanetScale, Railway, AWS RDS, etc.),
 skip the compose step and just point `DATABASE_URL` at it — any
