@@ -16,6 +16,7 @@ import { MeetingNamingState } from "./MeetingNamingState";
 import { ShareForm } from "./ShareForm";
 import { TranscriptDisclosure } from "./TranscriptDisclosure";
 import { EditableMeetingTitle } from "./EditableMeetingTitle";
+import { humanizeMeetingError } from "@/lib/error-messages";
 import { getPresignedGetUrlForBrowser } from "@/lib/storage";
 
 export const dynamic = "force-dynamic";
@@ -109,13 +110,32 @@ export default async function MeetingPage({ params }: PageProps) {
   }
 
   if (meeting.status === "failed") {
+    const friendly = humanizeMeetingError(meeting.errorMessage);
     return (
       <div className="page-fade space-y-4">
         <BackLink />
         <h1 className="text-2xl font-semibold">{meeting.title}</h1>
-        <div className="rounded-lg border border-red-500/30 bg-red-500/5 p-6 text-sm text-red-700 dark:text-red-300">
-          <div className="font-semibold mb-1">Processing failed</div>
-          <div>{meeting.errorMessage ?? "Unknown error"}</div>
+        <div className="rounded-lg border border-red-500/30 bg-red-500/5 p-5 text-red-700 dark:text-red-300">
+          <div className="font-semibold text-base">{friendly.heading}</div>
+          <p className="text-sm mt-1.5">{friendly.body}</p>
+          {friendly.hint && (
+            <p className="text-sm mt-2 text-red-700/80 dark:text-red-300/80">
+              {friendly.hint}
+            </p>
+          )}
+          {friendly.technical && (
+            // Collapsible raw error for support / dev triage. Native
+            // <details> so we don't ship JS just for this; default closed
+            // so the friendly copy is the only thing in the user's face.
+            <details className="mt-4 text-xs">
+              <summary className="cursor-pointer text-red-700/70 dark:text-red-300/70 hover:text-red-700 dark:hover:text-red-300 select-none">
+                Technical details
+              </summary>
+              <pre className="mt-2 whitespace-pre-wrap break-words font-mono text-[11px] opacity-75">
+                {friendly.technical}
+              </pre>
+            </details>
+          )}
         </div>
       </div>
     );
