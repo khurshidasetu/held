@@ -38,6 +38,18 @@ const SummaryJsonSchema = z.object({
   open_questions: z
     .array(z.object({ text: z.string() }))
     .default([]),
+  // Map from the generic label (e.g. "Speaker 1") to a real name detected
+  // from self-introductions in the transcript ("Hi I'm Alex", "ami Rakib"
+  // etc.). Caller applies these only to speakers whose displayName is null
+  // — never overwrites a name the user typed in the popup.
+  speaker_names: z
+    .array(
+      z.object({
+        label: z.string(),
+        name: z.string().min(1),
+      })
+    )
+    .default([]),
 });
 
 export type StructuredSummary = {
@@ -46,6 +58,8 @@ export type StructuredSummary = {
   actionItems: ActionItem[];
   decisions: Decision[];
   openQuestions: OpenQuestion[];
+  /** Inferred mapping: "Speaker N" → real name, from in-transcript self-intros. */
+  speakerNames: { label: string; name: string }[];
 };
 
 // Held's Result Card model: ship the answer, not a recap.
@@ -75,6 +89,15 @@ Produce a JSON object with exactly these top-level fields:
       cannot infer a real name, set owner to null. Never invent names.
     * due_date: free-text like "Friday", "EOD", "next sprint", or null.
   - "open_questions": array of { text }. Things raised but not resolved.
+  - "speaker_names": array of { label, name }. For any speaker whose line
+    prefix is a generic placeholder ("Speaker 1", "Speaker 2", etc.) AND who
+    introduces themselves in the transcript ("Hi I'm Alex", "Hello, my name
+    is Sarah", "ami Rakib bolchi", "amar nam Tareq" — these can be in any
+    language, including Bangla/English code-switching), output the mapping
+    so the app can replace the generic label with their real name. Use the
+    EXACT label that appears in the transcript prefix as the "label" value.
+    Only include speakers whose self-intro is unambiguous; never invent
+    names. Empty array if nobody self-introduces.
 
 Reply with ONLY a JSON object. No prose before or after, no markdown code
 fences. Use double quotes. Do not invent decisions, actions, or questions
@@ -117,6 +140,10 @@ export async function summarizeTranscript(
       rationale: d.rationale ?? null,
     })),
     openQuestions: parsed.open_questions.map((q) => ({ text: q.text })),
+    speakerNames: parsed.speaker_names.map((s) => ({
+      label: s.label.trim(),
+      name: s.name.trim(),
+    })),
   };
 }
 
@@ -135,7 +162,7 @@ async function callOpenRouter(transcript: string): Promise<string> {
     },
     body: JSON.stringify({
       model: env.openrouter.model,
-      max_tokens: 2048,
+      max_tokens: 1500,
       messages: [
         { role: "system", content: SYSTEM_PROMPT },
         { role: "user", content: `${USER_PREFIX}${transcript}${USER_SUFFIX}` },
@@ -176,7 +203,7 @@ function anthropicClient(): Anthropic {
 async function callAnthropic(transcript: string): Promise<string> {
   const response = await anthropicClient().messages.create({
     model: env.anthropic.model,
-    max_tokens: 2048,
+    max_tokens: 1500,
     system: SYSTEM_PROMPT,
     messages: [
       {

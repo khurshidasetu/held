@@ -9,13 +9,15 @@ import { config as loadDotenv } from "dotenv";
 
 loadDotenv({ path: ".env.local" });
 
-const TRANSCRIPT = `Sarah: Welcome everyone. Today we need to decide on the Q3 launch date.
-Mike: I think Friday is too aggressive given the bug count.
-Sarah: What about the Monday after? That gives us a clean week of QA.
-Mike: Works for me. I'll own the regression test pass.
-Sarah: Great. Let's also confirm we're pulling the dark mode feature out of scope.
-Mike: Agreed, it's not blocking anything else and shipping later is fine.
-Sarah: Done. I'll send the updated launch plan by EOD.`;
+// A transcript where speakers self-introduce — one in English, one mid-code-
+// switch Bangla+English. Tests both the Result-Card extraction and the new
+// speaker_names binding.
+const TRANSCRIPT = `Speaker 1: Hi everyone, I'm Alex. Thanks for joining today.
+Speaker 2: Hello, ami Rakib bolchi. Ajke amader meeting is on the Q3 launch.
+Speaker 1: Right. I think Friday is too aggressive given the bug count.
+Speaker 2: What about the Monday after? That gives us a clean week of QA.
+Speaker 1: Works for me. I'll own the regression test pass.
+Speaker 2: Done. I'll send the updated launch plan by EOD.`;
 
 async function main() {
   console.log(`→ provider:`, process.env.LLM_PROVIDER || "openrouter");
@@ -41,6 +43,10 @@ async function main() {
   console.log(`\n--- open questions (${result.openQuestions.length}) ---`);
   for (const q of result.openQuestions) {
     console.log(`  • ${q.text}`);
+  }
+  console.log(`\n--- speaker names (${result.speakerNames.length}) ---`);
+  for (const sn of result.speakerNames) {
+    console.log(`  • ${sn.label.padEnd(12)} → ${sn.name}`);
   }
 }
 

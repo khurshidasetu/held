@@ -132,6 +132,24 @@ export const env = {
     get apiKey() {
       return required("CARTESIA_API_KEY");
     },
+    /**
+     * STT model slug. `ink-whisper` (Cartesia's Whisper variant) is
+     * multilingual and handles code-switching (e.g. Bangla mixed with
+     * English) well out of the box.
+     */
+    get model() {
+      return process.env.CARTESIA_MODEL || "ink-whisper";
+    },
+    /**
+     * BCP-47 language tag (e.g. "en", "bn", "hi"). Cartesia rejects
+     * "auto"/"multi"/wildcards, but accepts an *empty value* — which lets
+     * Ink-Whisper auto-handle the language internally. That's ideal for
+     * meetings where speakers code-switch (Bangla + English). Pin to a
+     * specific tag only if you know every meeting will be a single language.
+     */
+    get language() {
+      return process.env.CARTESIA_LANGUAGE ?? "";
+    },
   },
 
   // LLM provider for meeting summaries.

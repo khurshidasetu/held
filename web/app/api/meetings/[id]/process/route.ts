@@ -170,6 +170,30 @@ async function runPipeline(
     openQuestions: summary.openQuestions,
   });
 
+  // Apply any self-introduced names that Claude extracted ("Hi I'm Alex" →
+  // displayName="Alex"). Only fills speakers whose displayName is still
+  // null — never overrides a name the user typed in the popup. The label
+  // from the LLM matches the positional label we rendered into the
+  // transcript ("Speaker N"), so look it up in labelToPositional.
+  if (summary.speakerNames.length > 0) {
+    const positionalToRowId = new Map<string, string>();
+    speakerRows.forEach((s, i) => {
+      positionalToRowId.set(`Speaker ${i + 1}`, s.id);
+    });
+    for (const { label, name } of summary.speakerNames) {
+      const rowId = positionalToRowId.get(label);
+      if (!rowId) continue;
+      // Look up the row by id to check displayName — speakerRows was
+      // captured before this update so it has the pre-summary state.
+      const row = speakerRows.find((r) => r.id === rowId);
+      if (!row || row.displayName) continue; // user-named: leave alone
+      await db
+        .update(speakers)
+        .set({ displayName: name })
+        .where(eq(speakers.id, rowId));
+    }
+  }
+
   await db
     .update(meetings)
     .set({ status: "complete", errorMessage: null })
