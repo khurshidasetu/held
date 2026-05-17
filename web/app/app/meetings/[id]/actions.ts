@@ -15,6 +15,48 @@ import { revalidatePath } from "next/cache";
 
 const RecipientsSchema = z.array(z.string().email()).min(1);
 
+const TitleSchema = z
+  .string()
+  .trim()
+  .min(1, "Title cannot be empty")
+  .max(255, "Title is too long");
+
+/**
+ * Rename a meeting. Used by the inline edit on the meeting details page —
+ * click the title, type, press Enter / blur to save. The action enforces
+ * ownership, trims + bounds the new value, and revalidates the two pages
+ * that show the title (this one + the meetings list).
+ *
+ * Returns the canonical trimmed title the client should display, so an
+ * input value of "  Foo  " round-trips as "Foo" without a second fetch.
+ */
+export async function updateMeetingTitle(
+  meetingId: string,
+  newTitle: string
+): Promise<{ title: string }> {
+  const userId = await getCurrentUserId();
+  const trimmed = TitleSchema.parse(newTitle);
+
+  const [meeting] = await db
+    .select({ id: meetings.id })
+    .from(meetings)
+    .where(and(eq(meetings.id, meetingId), eq(meetings.userId, userId)))
+    .limit(1);
+  if (!meeting) {
+    throw new Error("Meeting not found");
+  }
+
+  await db
+    .update(meetings)
+    .set({ title: trimmed })
+    .where(eq(meetings.id, meetingId));
+
+  revalidatePath(`/app/meetings/${meetingId}`);
+  revalidatePath("/app/meetings");
+
+  return { title: trimmed };
+}
+
 export type SendEmailsResult = {
   ok: boolean;
   sent: number;

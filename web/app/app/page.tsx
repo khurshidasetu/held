@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 import { count, eq } from "drizzle-orm";
 import { db, meetings } from "@/db";
@@ -16,9 +17,19 @@ export default async function CapturePage() {
     .where(eq(meetings.userId, userId));
 
   return (
-    <div className="page-fade flex flex-col items-center text-center pt-6 sm:pt-16 pb-12 px-4">
+    <div className="page-fade flex flex-col items-center text-center pt-6 sm:pt-12 pb-12 px-4">
       <div className="max-w-md w-full space-y-6">
-        <div className="space-y-2">
+        <div className="space-y-3 flex flex-col items-center">
+          {/* Hero mark above the heading. dark:invert keeps the dark
+              monochrome glyph legible against the dark-mode surface. */}
+          <Image
+            src="/held-logo.png"
+            alt="Held"
+            width={96}
+            height={96}
+            priority
+            className="w-20 h-20 sm:w-24 sm:h-24 object-contain dark:invert"
+          />
           <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight">
             Ready when you are.
           </h1>

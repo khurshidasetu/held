@@ -39,10 +39,10 @@
   --color-brand-hover: var(--brand-hover);
   --color-danger: var(--danger);
   --color-success: var(--success);
-  /* Held uses EB Garamond as its primary face — kept under --font-sans so
-     the Tailwind `font-sans` utility picks it up by default everywhere. */
-  --font-sans: var(--font-serif);
-  --font-serif: var(--font-serif);
+  /* Open Sans is the app face — `font-sans` (Tailwind default) picks it
+     up everywhere via this binding. Geist Mono is kept for tabular
+     numerics in the timer / "Working for Xs..." counters. */
+  --font-sans: var(--font-sans);
   --font-mono: var(--font-geist-mono);
 }
 
@@ -89,17 +89,26 @@ html {
       var(--background-3) 100%
     )
     fixed;
-  /* Variable axes for Fraunces. SOFT=0 / WONK=0 = the most refined,
-     business-serif rendering (no swashes, no quirk). */
-  font-variation-settings: "SOFT" 0, "WONK" 0;
-  font-optical-sizing: auto;
 }
 
 body {
-  font-family: var(--font-sans), Georgia, Cambria, "Times New Roman", Times, serif;
+  /* Open Sans first; system sans-serif fallbacks cover the brief flash
+     before the variable font loads (display: swap above keeps text
+     visible during that window). */
+  font-family:
+    var(--font-sans),
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    Roboto,
+    "Helvetica Neue",
+    Arial,
+    sans-serif;
   background: transparent; /* let the <html> gradient show through */
   -webkit-font-smoothing: antialiased;
-  /* Serif faces tend to read better with a touch more leading. */
+  /* Open Sans reads cleanest with a touch of extra leading for body copy
+     and slightly less heavy default weight than the variable's max. */
   line-height: 1.55;
 }
 
@@ -137,4 +146,74 @@ summary {
   .page-fade {
     animation: none;
   }
+}
+
+/* Floating selection pill (Meetings list bulk-delete). Slides up from
+   below + fades in when ≥1 row is selected. Translates by 130% (pill's
+   own height + breathing room) so it clears the viewport edge before the
+   animation starts. Reduced-motion disables the slide entirely. */
+@keyframes slideUpPill {
+  from {
+    transform: translateY(130%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+.slide-up-pill {
+  animation: slideUpPill 260ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .slide-up-pill {
+    animation: none;
+  }
+}
+
+/* Dialog entrance — backdrop fades in, card lifts + scales in. Mounted
+   together on every open, so we keep the timings tight (≤240ms) to avoid
+   a sluggish "settling" feeling. The expo-out curve gives a subtle
+   slow-arrival feel without the bounce of a spring. */
+@keyframes dialogBackdropIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes dialogCardIn {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+.dialog-backdrop {
+  animation: dialogBackdropIn 160ms ease-out both;
+}
+.dialog-card {
+  animation: dialogCardIn 220ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .dialog-backdrop,
+  .dialog-card {
+    animation: none;
+  }
+}
+
+/* Per-segment transcript collapsible. We use the native <details>/<summary>
+   pair so open/closed state is browser-managed (no React state, no
+   hydration cost, keyboard works for free). The default disclosure marker
+   shown by browsers is ugly and inconsistent — kill it so we can render
+   our own caret next to the speaker name. The caret rotation is wired via
+   Tailwind's `group-open:` variant on the SVG child. */
+.transcript-item summary {
+  list-style: none;
+}
+.transcript-item summary::-webkit-details-marker {
+  display: none;
+}
+.transcript-item summary::marker {
+  content: "";
 }

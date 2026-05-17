@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 import { ThemeToggle } from "./ThemeToggle";
 
@@ -9,9 +10,16 @@ export function Header() {
           href="/app"
           className="flex items-center gap-2 font-semibold text-foreground"
         >
-          <span className="w-6 h-6 rounded-md bg-brand text-brand-foreground inline-flex items-center justify-center text-xs font-bold">
-            H
-          </span>
+          {/* Mark is a dark monochrome glyph on transparent — invert in
+              dark mode so it stays readable on the dark surface. */}
+          <Image
+            src="/held-logo.png"
+            alt=""
+            width={28}
+            height={28}
+            priority
+            className="w-7 h-7 object-contain dark:invert"
+          />
           <span>Held</span>
         </Link>
         <div className="flex items-center gap-2 sm:gap-4">

@@ -15,6 +15,7 @@ import { MeetingIdentifyingState } from "./MeetingIdentifyingState";
 import { MeetingNamingState } from "./MeetingNamingState";
 import { ShareForm } from "./ShareForm";
 import { TranscriptDisclosure } from "./TranscriptDisclosure";
+import { EditableMeetingTitle } from "./EditableMeetingTitle";
 import { getPresignedGetUrlForBrowser } from "@/lib/storage";
 
 export const dynamic = "force-dynamic";
@@ -70,8 +71,16 @@ export default async function MeetingPage({ params }: PageProps) {
         .filter((s) => !s.isSilentAttendee)
         .map(async (s) => ({
           speakerLabel: s.speakerLabel,
+          // Older rows stored a fully-signed URL here instead of the storage
+          // key (that earlier bug is what broke the play button — signed
+          // URLs go stale, and double-signing produces nonsense paths).
+          // sampleKeyFrom() handles both shapes: pass-through for keys,
+          // strip the /api/storage/ prefix for legacy URLs.
           sampleUrl: s.sampleAudioUrl
-            ? await getPresignedGetUrlForBrowser(s.sampleAudioUrl, 60 * 60)
+            ? await getPresignedGetUrlForBrowser(
+                sampleKeyFrom(s.sampleAudioUrl),
+                60 * 60
+              )
             : null,
           // Pre-fill any name we already inferred (e.g. via the
           // identify-speakers self-intro extractor). User can edit or clear.
@@ -157,9 +166,10 @@ export default async function MeetingPage({ params }: PageProps) {
     <div className="page-fade space-y-6">
       <header className="space-y-1">
         <BackLink />
-        <h1 className="text-2xl font-semibold tracking-tight mt-1">
-          {meeting.title}
-        </h1>
+        <EditableMeetingTitle
+          meetingId={meeting.id}
+          initialTitle={meeting.title}
+        />
         <p className="text-xs text-muted-foreground">
           {new Date(meeting.createdAt).toLocaleString()}
           {meeting.durationSeconds
@@ -172,11 +182,11 @@ export default async function MeetingPage({ params }: PageProps) {
       {summary && (
         <article className="rounded-2xl border border-border bg-card overflow-hidden divide-y divide-border shadow-sm">
           {summary.nextStep && (
-            <section className="p-5 bg-brand/5">
+            <section className="px-4 py-3 bg-brand/5">
               <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-brand">
                 Next step
               </div>
-              <p className="mt-2 text-lg leading-snug text-foreground">
+              <p className="mt-1.5 text-base leading-snug text-foreground">
                 {summary.nextStep}
               </p>
             </section>
@@ -187,7 +197,7 @@ export default async function MeetingPage({ params }: PageProps) {
             empty="No decisions captured."
             count={summary.decisions.length}
           >
-            <ul className="space-y-2 text-[15px] leading-relaxed">
+            <ul className="space-y-1.5 text-[15px] leading-snug">
               {summary.decisions.map((d, i) => (
                 <li key={i} className="flex gap-2">
                   <span className="text-muted-foreground">·</span>
@@ -210,7 +220,7 @@ export default async function MeetingPage({ params }: PageProps) {
             empty="No action items."
             count={summary.actionItems.length}
           >
-            <ul className="space-y-2 text-[15px] leading-relaxed">
+            <ul className="space-y-1.5 text-[15px] leading-snug">
               {summary.actionItems.map((a, i) => (
                 <li key={i} className="flex gap-2">
                   <span className="text-muted-foreground">·</span>
@@ -241,7 +251,7 @@ export default async function MeetingPage({ params }: PageProps) {
             empty="Nothing left open."
             count={summary.openQuestions.length}
           >
-            <ul className="space-y-2 text-[15px] leading-relaxed">
+            <ul className="space-y-1.5 text-[15px] leading-snug">
               {summary.openQuestions.map((q, i) => (
                 <li key={i} className="flex gap-2">
                   <span className="text-muted-foreground">·</span>
@@ -253,32 +263,59 @@ export default async function MeetingPage({ params }: PageProps) {
         </article>
       )}
 
-      {/* Transcript hidden by default — "one swipe away". */}
+      {/* Transcript hidden by default — "one swipe away". Each segment is
+          a native <details open> so we get browser-managed collapse for
+          free; the outer wrapper caps height so long meetings stay
+          contained instead of pushing the share form below the fold. */}
       <TranscriptDisclosure>
         {summary && (
           <p className="text-sm text-muted-foreground italic mb-3">
             {summary.summary}
           </p>
         )}
-        <ol className="space-y-2">
-          {segments.map((s) => (
-            <li
-              key={s.id}
-              className="flex gap-3 rounded-md border border-border bg-card px-4 py-3"
-            >
-              <div
-                className="w-28 shrink-0 text-sm font-medium"
-                style={{
-                  color:
-                    speakerColorById.get(s.speakerId) ?? "var(--brand)",
-                }}
-              >
-                {speakerNameById.get(s.speakerId) ?? "Unknown"}
-              </div>
-              <div className="flex-1 leading-relaxed text-sm">{s.text}</div>
-            </li>
-          ))}
-        </ol>
+        {/* max-h-[60vh] + overflow-y-auto: bounded scroll area. The
+            -mr-1/pr-1 trick keeps the scrollbar from cropping the cards'
+            right edge. */}
+        <div className="max-h-[60vh] overflow-y-auto -mr-1 pr-1">
+          <ol className="space-y-2">
+            {segments.map((s) => {
+              const speakerName =
+                speakerNameById.get(s.speakerId) ?? "Unknown";
+              const speakerColor =
+                speakerColorById.get(s.speakerId) ?? "var(--brand)";
+              return (
+                <li key={s.id}>
+                  <details
+                    open
+                    className="transcript-item group rounded-md border border-border bg-card overflow-hidden"
+                  >
+                    <summary className="flex items-center gap-2 px-4 py-2.5 cursor-pointer select-none hover:bg-foreground/5 transition-colors">
+                      <span
+                        className="text-sm font-medium"
+                        style={{ color: speakerColor }}
+                      >
+                        {speakerName}
+                      </span>
+                      <CaretIcon className="text-muted-foreground transition-transform duration-200 group-open:rotate-180" />
+                      <span
+                        className="text-muted-foreground"
+                        aria-hidden="true"
+                      >
+                        ·
+                      </span>
+                      <time className="text-xs text-muted-foreground tabular-nums">
+                        {formatTimestamp(s.startSeconds)}
+                      </time>
+                    </summary>
+                    <div className="px-4 pb-3 leading-relaxed text-sm">
+                      {s.text}
+                    </div>
+                  </details>
+                </li>
+              );
+            })}
+          </ol>
+        </div>
       </TranscriptDisclosure>
 
       {/* Share — replaces the old "Send to attendees" with the same Postmark
@@ -319,8 +356,8 @@ function ResultSection({
   children: React.ReactNode;
 }) {
   return (
-    <section className="p-5">
-      <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground mb-3">
+    <section className="px-4 py-3">
+      <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground mb-1.5">
         {title}
       </div>
       {count > 0 ? (
@@ -336,4 +373,60 @@ function formatDuration(seconds: number): string {
   const m = Math.floor(seconds / 60);
   const s = seconds % 60;
   return `${m}m ${s.toString().padStart(2, "0")}s`;
+}
+
+/**
+ * Compat shim. Earlier versions of identify-speakers stored a full signed
+ * URL in speakers.sample_audio_url instead of the storage key — that bug
+ * broke the play button because the meeting page would then re-sign the
+ * URL as if it were a key, producing nonsense. New rows store just the
+ * key. This helper accepts either shape so the play button works on
+ * historical rows too.
+ */
+function sampleKeyFrom(stored: string): string {
+  if (!/^https?:\/\//.test(stored)) return stored;
+  try {
+    const url = new URL(stored);
+    const path = url.pathname.replace(/^\/api\/storage\//, "");
+    return path
+      .split("/")
+      .map((seg) => decodeURIComponent(seg))
+      .join("/");
+  } catch {
+    return stored;
+  }
+}
+
+/**
+ * Transcript-item timestamp: MM:SS (or HH:MM:SS for the unlikely case
+ * we ever have a >1h segment to show). tabular-nums on the rendering
+ * element keeps the digits from jittering as the list scrolls.
+ */
+function formatTimestamp(seconds: number): string {
+  const total = Math.max(0, Math.floor(seconds));
+  const s = total % 60;
+  const m = Math.floor(total / 60) % 60;
+  const h = Math.floor(total / 3600);
+  const ss = s.toString().padStart(2, "0");
+  const mm = m.toString().padStart(2, "0");
+  return h > 0 ? `${h}:${mm}:${ss}` : `${mm}:${ss}`;
+}
+
+function CaretIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      width="14"
+      height="14"
+      className={className}
+      aria-hidden="true"
+    >
+      <path d="M6 9l6 6 6-6" />
+    </svg>
+  );
 }

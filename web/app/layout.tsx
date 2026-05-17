@@ -1,28 +1,21 @@
 import type { Metadata, Viewport } from "next";
-import { Fraunces, EB_Garamond, Geist_Mono } from "next/font/google";
+import { Open_Sans, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
-// Fraunces — primary face. Variable axes for weight, italic, and optical
-// size. next/font self-hosts it under /_next/static (no runtime Google
-// Fonts request).
-const fraunces = Fraunces({
-  variable: "--font-serif",
-  subsets: ["latin"],
-  axes: ["opsz"],
-  display: "swap",
-});
-
-// EB Garamond — kept loaded as a secondary serif. Available under
-// --font-eb-garamond if/when we want to differentiate (e.g. running text
-// in long passages vs. display).
-const ebGaramond = EB_Garamond({
-  variable: "--font-eb-garamond",
+// Open Sans — primary face for the whole app. Loaded via next/font so
+// it's self-hosted under /_next/static (no runtime Google Fonts request,
+// no FOIT). We pull the full weight range as a variable font; italics
+// are bundled in the same variable so emphasised text works without a
+// second download.
+const openSans = Open_Sans({
+  variable: "--font-sans",
   subsets: ["latin"],
   display: "swap",
 });
 
-// Geist Mono is kept just for the recorder timer (tabular nums look better
-// in a monospace face than in a serif).
+// Geist Mono — kept for the recorder timer + tabular numerics in the
+// transcript / "Working for Xs..." counters. Monospace digits prevent
+// the layout from jiggling as the count updates.
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
@@ -41,7 +34,7 @@ export const metadata: Metadata = {
     statusBarStyle: "default",
   },
   icons: {
-    icon: "/favicon.ico",
+    icon: "/favicon.png",
     apple: "/icons/apple-touch-icon.png",
   },
 };
@@ -67,7 +60,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${fraunces.variable} ${ebGaramond.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${openSans.variable} ${geistMono.variable} h-full antialiased`}
       suppressHydrationWarning
     >
       <head>
