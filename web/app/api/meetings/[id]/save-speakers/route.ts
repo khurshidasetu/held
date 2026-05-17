@@ -91,6 +91,16 @@ export async function POST(request: Request, ctx: Context) {
   // works" without any per-segment fix-up downstream. The duplicate
   // speaker rows are then deleted along with anything the user removed
   // outright.
+  // Log on entry so we can confirm whether the popup actually delivered
+  // a merges payload — there's been at least one report of a user
+  // clicking "Same as Speaker N" but the transcript still showing two
+  // speakers. Either the merges array arrived empty (popup bug) or the
+  // rewrite ran without effect (less likely). The log catches both.
+  console.info(
+    `[save-speakers] meeting=${id} detected=${body.detected.length} silent=${body.silentAttendees.length} merges=${body.merges.length}`,
+    body.merges.length > 0 ? body.merges : ""
+  );
+
   if (body.merges.length > 0) {
     // Resolve any chains client-side missed (defensive — the popup
     // already flattens, but a merge into a target that's itself a `from`
@@ -106,14 +116,21 @@ export async function POST(request: Request, ctx: Context) {
       }
       return cur;
     }
-    const rewritten = (meeting.diarizationSegments ?? []).map((seg) => {
+    const originalSegments = meeting.diarizationSegments ?? [];
+    let rewriteCount = 0;
+    const rewritten = originalSegments.map((seg) => {
       const target = resolve(seg.speaker);
-      return target === seg.speaker ? seg : { ...seg, speaker: target };
+      if (target === seg.speaker) return seg;
+      rewriteCount += 1;
+      return { ...seg, speaker: target };
     });
     await db
       .update(meetings)
       .set({ diarizationSegments: rewritten })
       .where(eq(meetings.id, id));
+    console.info(
+      `[save-speakers] meeting=${id} rewrote ${rewriteCount}/${originalSegments.length} segments`
+    );
   }
 
   // Reconcile detected speakers: for each existing detected row (not a silent

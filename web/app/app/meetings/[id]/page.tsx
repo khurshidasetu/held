@@ -16,6 +16,7 @@ import { MeetingNamingState } from "./MeetingNamingState";
 import { ShareForm } from "./ShareForm";
 import { TranscriptDisclosure } from "./TranscriptDisclosure";
 import { EditableMeetingTitle } from "./EditableMeetingTitle";
+import { SpeakerManager } from "./SpeakerManager";
 import { humanizeMeetingError } from "@/lib/error-messages";
 import { getPresignedGetUrlForBrowser } from "@/lib/storage";
 
@@ -293,6 +294,19 @@ export default async function MeetingPage({ params }: PageProps) {
             {summary.summary}
           </p>
         )}
+        {/* Post-completion speaker manager — only renders when there's
+            more than one speaker, so single-speaker meetings stay clean.
+            Lets the user merge duplicates pyannote produced even after
+            /process has saved transcript_segments. */}
+        <SpeakerManager
+          meetingId={meeting.id}
+          speakers={speakerRows.map((s, i) => ({
+            id: s.id,
+            displayName: s.displayName ?? `Speaker ${i + 1}`,
+            paletteIndex: i % SPEAKER_PALETTE.length,
+            color: SPEAKER_PALETTE[i % SPEAKER_PALETTE.length],
+          }))}
+        />
         {/* max-h-[60vh] + overflow-y-auto: bounded scroll area. The
             -mr-1/pr-1 trick keeps the scrollbar from cropping the cards'
             right edge. */}

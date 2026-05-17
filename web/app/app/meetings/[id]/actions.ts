@@ -1,13 +1,15 @@
 "use server";
 
 import { getCurrentUserId } from "@/lib/auth";
-import { eq, and } from "drizzle-orm";
+import { eq, and, inArray } from "drizzle-orm";
 import { z } from "zod";
 import {
   db,
   meetings,
   meetingSummaries,
   emailSends,
+  speakers,
+  transcriptSegments,
 } from "@/db";
 import { sendMeetingEmail } from "@/lib/postmark";
 import { env } from "@/lib/env";
@@ -20,6 +22,85 @@ const TitleSchema = z
   .trim()
   .min(1, "Title cannot be empty")
   .max(255, "Title is too long");
+
+/**
+ * Merge two speakers in an already-completed meeting.
+ *
+ * Why this exists: the in-popup "Same as Speaker N" action only fires
+ * during the awaiting_speaker_naming phase. If the user realises after
+ * the transcript was generated that pyannote split one voice into two
+ * (very common on solo / short recordings), or if the popup merge
+ * silently failed to propagate, this is the post-hoc fix.
+ *
+ * Mechanics:
+ *   1. Verify the meeting belongs to the caller and both speakers
+ *      belong to that meeting (no cross-meeting moves).
+ *   2. Reassign every transcript_segments row from `fromSpeakerId` →
+ *      `intoSpeakerId`. The target row absorbs the merged-from row's
+ *      text under its existing displayName.
+ *   3. Delete the merged-from speaker row.
+ *   4. Revalidate the meeting page so the user sees the unified
+ *      transcript on next render.
+ *
+ * The caller can identify which speaker is which by speaker.id (UUID),
+ * which the page already has on hand. Same-id from/into is a no-op.
+ */
+export async function mergeMeetingSpeakers(
+  meetingId: string,
+  fromSpeakerId: string,
+  intoSpeakerId: string
+): Promise<void> {
+  if (fromSpeakerId === intoSpeakerId) return;
+
+  const userId = await getCurrentUserId();
+
+  // Ownership check on the meeting itself.
+  const [meeting] = await db
+    .select({ id: meetings.id })
+    .from(meetings)
+    .where(and(eq(meetings.id, meetingId), eq(meetings.userId, userId)))
+    .limit(1);
+  if (!meeting) {
+    throw new Error("Meeting not found");
+  }
+
+  // Both speakers must be in this meeting — prevents moving transcript
+  // rows across meetings via a hand-crafted request.
+  const rows = await db
+    .select({ id: speakers.id })
+    .from(speakers)
+    .where(
+      and(
+        eq(speakers.meetingId, meetingId),
+        inArray(speakers.id, [fromSpeakerId, intoSpeakerId])
+      )
+    );
+  if (rows.length !== 2) {
+    throw new Error("Speakers not found");
+  }
+
+  // Re-attribute every transcript row + delete the duplicate speaker.
+  // Order matters slightly: rewrite the FK refs first, THEN delete the
+  // row — the cascade on speakers would otherwise wipe the segments we
+  // wanted to keep.
+  await db
+    .update(transcriptSegments)
+    .set({ speakerId: intoSpeakerId })
+    .where(
+      and(
+        eq(transcriptSegments.meetingId, meetingId),
+        eq(transcriptSegments.speakerId, fromSpeakerId)
+      )
+    );
+
+  await db
+    .delete(speakers)
+    .where(
+      and(eq(speakers.meetingId, meetingId), eq(speakers.id, fromSpeakerId))
+    );
+
+  revalidatePath(`/app/meetings/${meetingId}`);
+}
 
 /**
  * Rename a meeting. Used by the inline edit on the meeting details page —
