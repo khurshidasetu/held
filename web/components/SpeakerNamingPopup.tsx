@@ -412,10 +412,17 @@ export function SpeakerNamingPopup({ speakers, onSubmit, onSkip }: Props) {
                 </button>
                 </div>
                 {showMergePicker && (
-                  <div className="px-3 pb-3 pt-1 border-t border-border/60 flex flex-wrap items-center gap-2 text-sm">
+                  <div className="px-3 pb-2.5 pt-1 border-t border-border/60 flex flex-wrap items-center gap-1.5 text-xs">
                     <span className="text-muted-foreground">
                       Same as&nbsp;
                     </span>
+                    {/*
+                      Chips intentionally drop .tap-target — they're
+                      sub-actions inside an already-opened picker, not
+                      primary tap targets, so the 44×44 floor would feel
+                      oversized. Tighter padding + text-[11px] keeps the
+                      picker compact but still comfortably tappable.
+                    */}
                     {mergeCandidates.map(({ other, idx }) => (
                       <button
                         key={other.speakerLabel}
@@ -423,7 +430,7 @@ export function SpeakerNamingPopup({ speakers, onSubmit, onSkip }: Props) {
                         onClick={() =>
                           mergeIntoSpeaker(s.speakerLabel, other.speakerLabel)
                         }
-                        className="tap-target inline-flex items-center px-3 py-1.5 rounded-full bg-brand/10 text-brand hover:bg-brand/20 text-xs font-medium"
+                        className="inline-flex items-center px-2 py-0.5 rounded-full bg-brand/10 text-brand hover:bg-brand/20 text-[11px] font-medium"
                       >
                         Speaker {idx + 1}
                       </button>
@@ -431,7 +438,7 @@ export function SpeakerNamingPopup({ speakers, onSubmit, onSkip }: Props) {
                     <button
                       type="button"
                       onClick={() => setMergePickerFor(null)}
-                      className="tap-target inline-flex items-center px-3 py-1.5 rounded-full text-muted-foreground hover:text-foreground hover:bg-foreground/5 text-xs"
+                      className="inline-flex items-center px-2 py-0.5 rounded-full text-muted-foreground hover:text-foreground hover:bg-foreground/5 text-[11px]"
                     >
                       Cancel
                     </button>
